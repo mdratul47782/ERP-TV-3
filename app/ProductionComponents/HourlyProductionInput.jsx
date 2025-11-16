@@ -21,7 +21,7 @@ export default function ProductionInputForm() {
   const [todayKey, setTodayKey] = useState(computeTodayKey);
   const lastTickRef = useRef(Date.now());
 
-  // 🔹 Main form state (includes smv)
+  // 🔹 Main form state (includes SMV etc.)
   const [form, setForm] = useState({
     operatorTo: "",
     manpowerPresent: "",
@@ -167,6 +167,37 @@ export default function ProductionInputForm() {
     };
   };
 
+  // 🔹 Auto-computed TODAY TARGET
+  // Formula:
+  //   Total Working Time (minutes) = manpowerPresent × workingHour × 60
+  //   Today Target = (Total Working Time / SMV) × Efficiency
+  //   Efficiency = planEfficiency% / 100
+  const computedTodayTarget = useMemo(() => {
+    const manpower = Number(form.manpowerPresent);
+    const hours = Number(form.workingHour);
+    const smv = Number(form.smv);
+    const effPct = Number(form.planEfficiency);
+
+    if (!Number.isFinite(manpower) || manpower <= 0) return "";
+    if (!Number.isFinite(hours) || hours <= 0) return "";
+    if (!Number.isFinite(smv) || smv <= 0) return "";
+    if (!Number.isFinite(effPct) || effPct <= 0) return "";
+
+    const totalWorkingTimeMinutes = manpower * hours * 60; // minutes
+    const eff = effPct / 100;
+
+    const target = (totalWorkingTimeMinutes / smv) * eff;
+
+    if (!Number.isFinite(target) || target <= 0) return "";
+    // Round to whole pieces; adjust if you prefer decimals
+    return Math.round(target);
+  }, [
+    form.manpowerPresent,
+    form.workingHour,
+    form.smv,
+    form.planEfficiency,
+  ]);
+
   // 🔹 Save / Update (always bound to today's date)
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -182,15 +213,21 @@ export default function ProductionInputForm() {
     setSaving(true);
 
     try {
+      const computedTargetNumber = Number(computedTodayTarget);
+      const finalTodayTarget =
+        Number.isFinite(computedTargetNumber) && computedTargetNumber > 0
+          ? computedTargetNumber
+          : Number(form.todayTarget) || 0;
+
       // 🔹 For updates (PATCH), don't send productionDate
       // For new records (POST), include productionDate
       const payload = {
         ...form,
+        todayTarget: finalTodayTarget,
         productionUser: buildProductionUserSnapshot(),
         qualityUser: buildQualityUserSnapshot(),
       };
 
-      // Only add productionDate for POST (new records)
       if (!isUpdate) {
         payload.productionDate = todayKey;
       }
@@ -318,6 +355,7 @@ export default function ProductionInputForm() {
             value={form.manpowerPresent}
             onChange={handleChange}
             placeholder="30"
+            type="number"
           />
           <Field
             label="Manpower Absent"
@@ -325,6 +363,7 @@ export default function ProductionInputForm() {
             value={form.manpowerAbsent}
             onChange={handleChange}
             placeholder="2"
+            type="number"
           />
           <Field
             label="Working Hour"
@@ -332,6 +371,7 @@ export default function ProductionInputForm() {
             value={form.workingHour}
             onChange={handleChange}
             placeholder="8"
+            type="number"
           />
           <Field
             label="Plan Quantity"
@@ -339,6 +379,7 @@ export default function ProductionInputForm() {
             value={form.planQuantity}
             onChange={handleChange}
             placeholder="2000"
+            type="number"
           />
           <Field
             label="Plan Efficiency (%)"
@@ -346,27 +387,39 @@ export default function ProductionInputForm() {
             value={form.planEfficiency}
             onChange={handleChange}
             placeholder="90"
+            type="number"
           />
           <Field
-            label="SMV"
+            label="SMV (minutes)"
             name="smv"
             value={form.smv}
             onChange={handleChange}
             placeholder="1.2"
+            type="number"
           />
+
+          {/* 🔹 Today Target = auto-calculated, read-only */}
           <Field
-            label="Today Target"
+            label="Today Target (auto)"
             name="todayTarget"
-            value={form.todayTarget}
-            onChange={handleChange}
-            placeholder="1000"
+            value={
+              computedTodayTarget === ""
+                ? form.todayTarget
+                : computedTodayTarget.toString()
+            }
+            onChange={() => {}}
+            placeholder="Auto from manpower, hour, SMV, efficiency"
+            type="number"
+            readOnly
           />
+
           <Field
             label="Achieve (optional)"
             name="achieve"
             value={form.achieve}
             onChange={handleChange}
             placeholder="700"
+            type="number"
           />
         </div>
 
@@ -410,7 +463,15 @@ export default function ProductionInputForm() {
 }
 
 // 🔹 Compact reusable field
-function Field({ label, name, value, onChange, placeholder }) {
+function Field({
+  label,
+  name,
+  value,
+  onChange,
+  placeholder,
+  type = "text",
+  readOnly = false,
+}) {
   return (
     <div className="flex flex-col gap-1">
       <label
@@ -423,9 +484,12 @@ function Field({ label, name, value, onChange, placeholder }) {
         id={name}
         name={name}
         value={value}
-        onChange={onChange}
+        onChange={readOnly ? undefined : onChange}
+        type={type}
+        readOnly={readOnly}
         className="h-8 w-full rounded-md border border-slate-300 bg-white px-2 text-xs text-slate-900
-                   focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500"
+                   focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500
+                   disabled:bg-slate-50"
         placeholder={placeholder}
       />
     </div>
