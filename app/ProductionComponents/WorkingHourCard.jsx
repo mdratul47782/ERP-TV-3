@@ -130,19 +130,47 @@ export default function WorkingHourCard({ header }) {
         (manpowerPresent * 60)
       : 0;
 
-  // 🔹 Carry-over shortfall to show dynamic target
-  const shortfallUntilPrev = hourlyRecords.reduce((sum, rec) => {
-    if (typeof rec.hour !== "number" || rec.hour >= selectedHour) {
-      return sum;
-    }
-    const dyn = Number(rec.dynamicTarget);
-    const ach = Number(rec.achievedQty);
-    const dynSafe = Number.isFinite(dyn) ? dyn : baseTargetPerHour;
-    const achSafe = Number.isFinite(ach) ? ach : 0;
-    return sum + (dynSafe - achSafe);
-  }, 0);
+  // 🔹 Dynamic target logic (must mirror API)
+  // We:
+  //  1) Look for a record with this selected hour.
+  //  2) If not found, look at the previous hour record (max hour < selectedHour).
+  //  3) Previous variance = achieved - dynamicTarget (from DB).
+  //  4) ShortfallPrevHour = abs(negative variance), else 0.
+  //  5) DynamicTargetThisHour = base target + ShortfallPrevHour.
+  const selectedHourInt = Number(selectedHour) || 1;
 
-  const dynamicTargetThisHour = baseTargetPerHour + shortfallUntilPrev;
+  const recordForSelectedHour = hourlyRecords.find(
+    (rec) => Number(rec.hour) === selectedHourInt
+  );
+
+  const previousRecordsSorted = hourlyRecords
+    .filter(
+      (rec) =>
+        typeof rec.hour === "number" && rec.hour < selectedHourInt
+    )
+    .sort((a, b) => a.hour - b.hour);
+
+  const previousRecord =
+    previousRecordsSorted.length > 0
+      ? previousRecordsSorted[previousRecordsSorted.length - 1]
+      : null;
+
+  const previousVariance = previousRecord
+    ? Number(previousRecord.varianceQty)
+    : 0;
+
+  // Shortfall from previous hour is the absolute value of negative variance
+  const shortfallPrevHour =
+    previousVariance < 0 ? -previousVariance : 0;
+
+  // Dynamic target for selected hour:
+  //   - If record exists for this hour, show its saved dynamicTarget.
+  //   - Otherwise: base target + shortfall from previous hour.
+  const dynamicTargetThisHour = recordForSelectedHour
+    ? Number(
+        recordForSelectedHour.dynamicTarget ?? baseTargetPerHour
+      )
+    : baseTargetPerHour + shortfallPrevHour;
 
   if (productionLoading) {
     return (
@@ -308,8 +336,14 @@ export default function WorkingHourCard({ header }) {
             Last Saved Dynamic Target: {formatNumber(latestDynamicFromServer)}
           </div>
         )}
+        {previousRecord && (
+          <div>
+            Prev hour variance (achieved - target):{" "}
+            {formatNumber(previousVariance)}
+          </div>
+        )}
         <div>
-          Shortfall till prev hour: {formatNumber(shortfallUntilPrev)}
+          Shortfall from prev hour: {formatNumber(shortfallPrevHour)}
         </div>
         <div>
           Dynamic target this hour: {formatNumber(dynamicTargetThisHour)}
@@ -369,7 +403,7 @@ export default function WorkingHourCard({ header }) {
                   {formatNumber(dynamicTargetThisHour)}
                 </div>
                 <p className="mt-1 text-[10px] text-amber-700 leading-tight">
-                  Base + shortfall from previous hours
+                  Base + shortfall from previous hour
                 </p>
               </td>
 
@@ -477,6 +511,7 @@ export default function WorkingHourCard({ header }) {
                     </td>
                     <td className="px-2 py-1">{rec.achievedQty}</td>
                     <td className="px-2 py-1">
+                      {/* variance = achieved - target (can be negative) */}
                       {formatNumber(rec.varianceQty)}
                     </td>
                     <td className="px-2 py-1">

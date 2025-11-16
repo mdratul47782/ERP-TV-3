@@ -123,7 +123,7 @@ export async function POST(request) {
     const baseTargetPerHour = computeBaseTargetPerHour(header);
 
     // 🔹 Load previous hours for:
-    //  - carry-over shortfall
+    //  - previous variance (for dynamic target)
     //  - total achieved before this hour
     //  - sum of previous achieveEfficiency (for Total Efficiency)
     const previousRecords = await HourlyProductionModel.find({
@@ -134,27 +134,50 @@ export async function POST(request) {
       .sort({ hour: 1 })
       .lean();
 
-    let shortfallUntilPrev = 0;
     let totalAchievedBefore = 0;
     let sumAchieveEffPrev = 0;
 
     for (const rec of previousRecords) {
-      const prevTarget = toNumberOrZero(
-        rec.dynamicTarget ?? rec.baseTargetPerHour
-      );
       const prevAchieved = toNumberOrZero(rec.achievedQty);
       const prevAchieveEff = toNumberOrZero(rec.achieveEfficiency);
 
-      shortfallUntilPrev += prevTarget - prevAchieved;
       totalAchievedBefore += prevAchieved;
       sumAchieveEffPrev += prevAchieveEff;
     }
 
-    // 🔹 Dynamic target for this hour: base + previous shortfall
-    const dynamicTarget = baseTargetPerHour + shortfallUntilPrev;
+    // 🔹 Previous hour's variance (achieved - dynamicTarget)
+    const previousRecord =
+      previousRecords.length > 0
+        ? previousRecords[previousRecords.length - 1]
+        : null;
 
-    // 🔹 Variance for this hour
-    const varianceQty = dynamicTarget - achievedQty;
+    const previousVariance = previousRecord
+      ? toNumberOrZero(previousRecord.varianceQty)
+      : 0;
+
+    // Shortfall from previous hour = abs(negative variance), else 0
+    // Example: prev variance = -5  => shortfallPrevHour = 5
+    //          prev variance = +10 => shortfallPrevHour = 0 (you are ahead)
+    const shortfallPrevHour =
+      previousVariance < 0 ? -previousVariance : 0;
+
+    // 🔹 Dynamic target for this hour:
+    //  base target + previous shortfall (from last hour only)
+    //
+    //  Example with base = 20 and achieved [15, 20, 15, 20, 10, 50]:
+    //    H1: dyn = 20, var = -5
+    //    H2: dyn = 20 + 5  = 25, var = -5
+    //    H3: dyn = 20 + 5  = 25, var = -10
+    //    H4: dyn = 20 + 10 = 30, var = -10
+    //    H5: dyn = 20 + 10 = 30, var = -20
+    //    H6: dyn = 20 + 20 = 40, var = +10
+    const dynamicTarget = baseTargetPerHour + shortfallPrevHour;
+
+    // 🔹 Variance for this hour (your requested sign convention)
+    //  varianceQty = achieved - target
+    //   < 0 => behind plan (short)
+    //   > 0 => ahead of plan (excess)
+    const varianceQty = achievedQty - dynamicTarget;
 
     // 🔹 Hourly efficiency (this hour)
     // Formula: Hourly Output * SMV / (Manpower * 60) * 100
@@ -190,7 +213,7 @@ export async function POST(request) {
       achievedQty,
       baseTargetPerHour,
       dynamicTarget,
-      varianceQty,
+      varianceQty,        // achieved - target (can be negative or positive)
       hourlyEfficiency,
       achieveEfficiency,  // overall till this hour
       totalEfficiency,    // average from 1st hour to this hour
