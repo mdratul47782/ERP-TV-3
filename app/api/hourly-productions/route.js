@@ -9,9 +9,9 @@ function toNumberOrZero(value) {
   return Number.isFinite(num) ? num : 0;
 }
 
-// 🔹 Compute base hourly target
-// Prefer: todayTarget / workingHour (if available)
-// Fallback: (manpower * 60 * planEff% / 100) / SMV
+// 🔹 Compute base hourly target (GARMENT RULE)
+// Target/hr = Manpower × 60 × Plan Eff% ÷ SMV
+// Fallback: DayTarget / WorkingHour when capacity can't be computed
 function computeBaseTargetPerHour(header) {
   const workingHour = toNumberOrZero(header.workingHour);
   const todayTarget = toNumberOrZero(header.todayTarget);
@@ -20,15 +20,16 @@ function computeBaseTargetPerHour(header) {
   const planEfficiencyPercent = toNumberOrZero(header.planEfficiency);
   const planEffDecimal = planEfficiencyPercent / 100;
 
-  const targetFromTodayTarget =
-    workingHour > 0 ? todayTarget / workingHour : 0;
-
   const targetFromCapacity =
     manpowerPresent > 0 && smv > 0
       ? (manpowerPresent * 60 * planEffDecimal) / smv
       : 0;
 
-  return targetFromTodayTarget || targetFromCapacity || 0;
+  const targetFromTodayTarget =
+    workingHour > 0 ? todayTarget / workingHour : 0;
+
+  // Prefer capacity-based target; fall back to plan/day only if needed
+  return targetFromCapacity || targetFromTodayTarget || 0;
 }
 
 // 🔸 GET /api/hourly-productions?headerId=...&productionUserId=...
@@ -119,11 +120,10 @@ export async function POST(request) {
     const manpowerPresent = toNumberOrZero(header.manpowerPresent);
     const smv = toNumberOrZero(header.smv);
 
-    // 🔹 Base hourly target at plan efficiency
+    // 🔹 Base hourly target at plan efficiency (GARMENT RULE)
     const baseTargetPerHour = computeBaseTargetPerHour(header);
 
     // 🔹 Load previous hours for:
-    //  - previous variance (for dynamic target)
     //  - total achieved before this hour
     //  - sum of previous achieveEfficiency (for Total Efficiency)
     const previousRecords = await HourlyProductionModel.find({
@@ -140,7 +140,6 @@ export async function POST(request) {
     for (const rec of previousRecords) {
       const prevAchieved = toNumberOrZero(rec.achievedQty);
       const prevAchieveEff = toNumberOrZero(rec.achieveEfficiency);
-
       totalAchievedBefore += prevAchieved;
       sumAchieveEffPrev += prevAchieveEff;
     }
@@ -156,31 +155,24 @@ export async function POST(request) {
       : 0;
 
     // Shortfall from previous hour = abs(negative variance), else 0
-    // Example: prev variance = -5  => shortfallPrevHour = 5
-    //          prev variance = +10 => shortfallPrevHour = 0 (you are ahead)
+    // Example:
+    //   H1: base = 49, achieved = 40
+    //       variance = 40 - 49 = -9 => shortfallPrevHour = 9
+    //   H2: dynamicTarget = 49 + 9 = 58
     const shortfallPrevHour =
       previousVariance < 0 ? -previousVariance : 0;
 
-    // 🔹 Dynamic target for this hour:
-    //  base target + previous shortfall (from last hour only)
-    //
-    //  Example with base = 20 and achieved [15, 20, 15, 20, 10, 50]:
-    //    H1: dyn = 20, var = -5
-    //    H2: dyn = 20 + 5  = 25, var = -5
-    //    H3: dyn = 20 + 5  = 25, var = -10
-    //    H4: dyn = 20 + 10 = 30, var = -10
-    //    H5: dyn = 20 + 10 = 30, var = -20
-    //    H6: dyn = 20 + 20 = 40, var = +10
+    // 🔹 Dynamic target for this hour (Base + previous shortfall)
     const dynamicTarget = baseTargetPerHour + shortfallPrevHour;
 
-    // 🔹 Variance for this hour (your requested sign convention)
-    //  varianceQty = achieved - target
-    //   < 0 => behind plan (short)
-    //   > 0 => ahead of plan (excess)
+    // 🔹 Variance for this hour (your convention)
+    // varianceQty = achieved - dynamicTarget
+    //  < 0 => short (behind)
+    //  > 0 => ahead
     const varianceQty = achievedQty - dynamicTarget;
 
     // 🔹 Hourly efficiency (this hour)
-    // Formula: Hourly Output * SMV / (Manpower * 60) * 100
+    //   Hourly Eff % = Hourly Output * SMV / (Manpower * 60) * 100
     const hourlyEfficiency =
       manpowerPresent > 0 && smv > 0
         ? (achievedQty * smv * 100) / (manpowerPresent * 60)
@@ -188,9 +180,9 @@ export async function POST(request) {
 
     // 🔹 Overall efficiency up to this hour (Achieve Efficiency)
     // TotalAchievedUpToThisHour = previous achieved + this hour
+    // AchieveEff% = TotalAchieved * SMV / (Manpower * 60 * HourCompleted) * 100
     const totalAchievedUpToThisHour = totalAchievedBefore + achievedQty;
 
-    // AchieveEff% = TotalAchieved * SMV / (Manpower * 60 * HourCompleted) * 100
     const achieveEfficiency =
       manpowerPresent > 0 && smv > 0 && hour > 0
         ? (totalAchievedUpToThisHour * smv * 100) /
@@ -198,9 +190,7 @@ export async function POST(request) {
         : 0;
 
     // 🔹 Total Efficiency:
-    //  Total(Total achieve efficiency from 1st h to present h) / hour
-    //
-    //  => average of achieveEfficiency values from hour 1..current
+    //  average of achieveEfficiency from hour 1..current
     const totalEfficiency =
       hour > 0
         ? (sumAchieveEffPrev + achieveEfficiency) / hour

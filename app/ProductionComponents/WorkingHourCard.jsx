@@ -11,7 +11,7 @@ function formatNumber(value, digits = 2) {
 }
 
 export default function WorkingHourCard({ header: initialHeader }) {
-  // Normalize header: allow array or single object
+  // 🔹 Normalize header: allow array or single object
   const [header, setHeader] = useState(
     Array.isArray(initialHeader) ? initialHeader[0] : initialHeader || null
   );
@@ -34,23 +34,21 @@ export default function WorkingHourCard({ header: initialHeader }) {
 
     const fetchHeaderData = async () => {
       try {
-        // Get today's date in YYYY-MM-DD format
         const todayDate = new Intl.DateTimeFormat("en-CA").format(new Date());
-        
         const params = new URLSearchParams({
           productionUserId: ProductionAuth.id,
-          date: todayDate, // Use "date" param to match API
+          date: todayDate,
         });
 
-        const res = await fetch(`/api/production-headers?${params.toString()}`, {
-          cache: "no-store",
-        });
+        const res = await fetch(
+          `/api/production-headers?${params.toString()}`,
+          { cache: "no-store" }
+        );
         const json = await res.json();
 
         if (res.ok && json.success && json.data) {
           setHeader(json.data);
         } else {
-          // No data for today, set to null
           setHeader(null);
         }
       } catch (err) {
@@ -58,62 +56,10 @@ export default function WorkingHourCard({ header: initialHeader }) {
       }
     };
 
-    // Initial fetch
     fetchHeaderData();
-
-    // Set up interval for every 3 seconds
     const intervalId = setInterval(fetchHeaderData, 3000);
-
     return () => clearInterval(intervalId);
   }, [ProductionAuth?.id]);
-
-  useEffect(() => {
-    console.log("WorkingHourCard header:", h);
-  }, [h]);
-
-  useEffect(() => {
-    console.log("hello i am production auth", ProductionAuth);
-  }, [ProductionAuth]);
-
-  // 🔹 Guard: no header
-  if (!h) {
-    return (
-      <div className="rounded-2xl border border-gray-300 bg-white shadow-sm p-4 text-xs">
-        No production header found. Please save a header first.
-      </div>
-    );
-  }
-
-  const headerProdName = h.productionUser?.Production_user_name ?? "";
-  const authProdName = ProductionAuth?.Production_user_name ?? "";
-
-  const isMatched =
-    headerProdName &&
-    authProdName &&
-    headerProdName.toLowerCase() === authProdName.toLowerCase();
-
-  const totalWorkingHours = h.workingHour ?? 1;
-  const manpowerPresent = h.manpowerPresent ?? 0;
-  const smv = h.smv ?? 1;
-  const planEfficiencyPercent = h.planEfficiency ?? 0;
-  const planEffDecimal = planEfficiencyPercent / 100;
-  const todayTarget = h.todayTarget ?? 0;
-
-  const hours = Array.from(
-    { length: Math.max(1, totalWorkingHours) },
-    (_, i) => i + 1
-  );
-
-  // 🔹 Base hourly target (same logic as API)
-  const targetFromTodayTarget =
-    totalWorkingHours > 0 ? todayTarget / totalWorkingHours : 0;
-  const targetFromCapacity =
-    manpowerPresent > 0 && smv > 0
-      ? (manpowerPresent * 60 * planEffDecimal) / smv
-      : 0;
-  const baseTargetPerHour = targetFromTodayTarget || targetFromCapacity || 0;
-
-  const achievedThisHour = Number(achievedInput) || 0;
 
   // 🔹 Load existing hourly records for this header + production user
   useEffect(() => {
@@ -156,44 +102,89 @@ export default function WorkingHourCard({ header: initialHeader }) {
     fetchRecords();
   }, [h?._id, ProductionAuth?.id]);
 
-  // 🔹 Hourly efficiency (this hour only)
-  //   Hourly Eff % = Hourly Output * SMV / (Manpower * 60) * 100
+  // 🔹 ALL HOOKS MUST BE CALLED BEFORE ANY CONDITIONAL RENDERING
+
+  // Calculate values (safe to do even with null data)
+  const totalWorkingHours = h?.workingHour ?? 1;
+  const manpowerPresent = h?.manpowerPresent ?? 0;
+  const smv = h?.smv ?? 1;
+  const planEfficiencyPercent = h?.planEfficiency ?? 0;
+  const planEffDecimal = planEfficiencyPercent / 100;
+  const todayTarget = h?.todayTarget ?? 0;
+
+  const hours = Array.from(
+    { length: Math.max(1, totalWorkingHours) },
+    (_, i) => i + 1
+  );
+
+  const targetFromCapacity =
+    manpowerPresent > 0 && smv > 0
+      ? (manpowerPresent * 60 * planEffDecimal) / smv
+      : 0;
+
+  const targetFromTodayTarget =
+    totalWorkingHours > 0 ? todayTarget / totalWorkingHours : 0;
+
+  const baseTargetPerHour = targetFromCapacity || targetFromTodayTarget || 0;
+  const achievedThisHour = Number(achievedInput) || 0;
+
   const hourlyEfficiency =
     manpowerPresent > 0 && smv > 0
       ? (achievedThisHour * smv * 100) / (manpowerPresent * 60)
       : 0;
 
-  // 🔹 Achieve Efficiency (front preview)
-  //   Hourly Output * SMV / (Manpower * 60) * Working Hour
   const achieveEfficiency =
     manpowerPresent > 0 && smv > 0
       ? (achievedThisHour * smv * selectedHour) / (manpowerPresent * 60)
       : 0;
 
-  // 🔹 Dynamic target logic (must mirror API)
   const selectedHourInt = Number(selectedHour) || 1;
 
-  const recordForSelectedHour = hourlyRecords.find(
-    (rec) => Number(rec.hour) === selectedHourInt
-  );
+  const recordForSelectedHour = hourlyRecords.find((rec) => {
+    const recHour = Number(rec.hour);
+    return Number.isFinite(recHour) && recHour === selectedHourInt;
+  });
 
   const previousRecordsSorted = hourlyRecords
-    .filter((rec) => typeof rec.hour === "number" && rec.hour < selectedHourInt)
-    .sort((a, b) => a.hour - b.hour);
+    .map((rec) => ({
+      ...rec,
+      _hourNum: Number(rec.hour),
+    }))
+    .filter((rec) => Number.isFinite(rec._hourNum) && rec._hourNum < selectedHourInt)
+    .sort((a, b) => a._hourNum - b._hourNum);
+
+  let cumulativeVariance = 0;
+  for (const rec of previousRecordsSorted) {
+    const variance = Number(rec.varianceQty) || 0;
+    cumulativeVariance += variance;
+  }
+
+  const cumulativeShortfall = cumulativeVariance < 0 ? -cumulativeVariance : 0;
+
+  const dynamicTargetThisHour = recordForSelectedHour
+    ? Number(recordForSelectedHour.dynamicTarget ?? baseTargetPerHour)
+    : baseTargetPerHour + cumulativeShortfall;
 
   const previousRecord =
     previousRecordsSorted.length > 0
       ? previousRecordsSorted[previousRecordsSorted.length - 1]
       : null;
 
-  const previousVariance = previousRecord ? Number(previousRecord.varianceQty) : 0;
+  let previousVariance = 0;
+  if (previousRecord && previousRecord.varianceQty != null) {
+    const n = Number(previousRecord.varianceQty);
+    previousVariance = Number.isFinite(n) ? n : 0;
+  }
 
-  const shortfallPrevHour = previousVariance < 0 ? -previousVariance : 0;
+  const headerProdName = h?.productionUser?.Production_user_name ?? "";
+  const authProdName = ProductionAuth?.Production_user_name ?? "";
+  const isMatched =
+    headerProdName &&
+    authProdName &&
+    headerProdName.toLowerCase() === authProdName.toLowerCase();
 
-  const dynamicTargetThisHour = recordForSelectedHour
-    ? Number(recordForSelectedHour.dynamicTarget ?? baseTargetPerHour)
-    : baseTargetPerHour + shortfallPrevHour;
-
+  // 🔹 NOW we can do conditional rendering (all hooks already called)
+  
   if (productionLoading) {
     return (
       <div className="rounded-2xl border border-gray-300 bg-white shadow-sm p-4 text-xs">
@@ -210,6 +201,14 @@ export default function WorkingHourCard({ header: initialHeader }) {
     );
   }
 
+  if (!h) {
+    return (
+      <div className="rounded-2xl border border-gray-300 bg-white shadow-sm p-4 text-xs">
+        No production header found. Please save a header first.
+      </div>
+    );
+  }
+
   if (!isMatched) {
     return (
       <div className="rounded-2xl border border-rose-300 bg-rose-50 shadow-sm p-4 text-xs space-y-1.5">
@@ -217,12 +216,10 @@ export default function WorkingHourCard({ header: initialHeader }) {
           Header does not belong to the logged-in production user.
         </div>
         <div className="text-slate-700">
-          <span className="font-medium">Header production user:</span>{" "}
-          {headerProdName || "N/A"}
+          <span className="font-medium">Header production user:</span> {headerProdName || "N/A"}
         </div>
         <div className="text-slate-700">
-          <span className="font-medium">Logged-in production user:</span>{" "}
-          {authProdName || "N/A"}
+          <span className="font-medium">Logged-in production user:</span> {authProdName || "N/A"}
         </div>
       </div>
     );
@@ -238,13 +235,13 @@ export default function WorkingHourCard({ header: initialHeader }) {
         throw new Error("Missing headerId");
       }
 
-      if (!achievedThisHour || achievedThisHour < 0) {
+      if (!Number.isFinite(achievedThisHour) || achievedThisHour < 0) {
         throw new Error("Please enter a valid achieved qty for this hour");
       }
 
       const payload = {
         headerId: h._id,
-        hour: selectedHour,
+        hour: Number(selectedHour),
         achievedQty: achievedThisHour,
         productionUser: {
           id: ProductionAuth.id,
@@ -270,12 +267,13 @@ export default function WorkingHourCard({ header: initialHeader }) {
         );
       }
 
-      // Refresh list
       const params = new URLSearchParams({
         headerId: h._id,
         productionUserId: ProductionAuth.id,
       });
-      const resList = await fetch(`/api/hourly-productions?${params.toString()}`);
+      const resList = await fetch(
+        `/api/hourly-productions?${params.toString()}`
+      );
       const jsonList = await resList.json();
       if (resList.ok && jsonList.success) {
         const records = jsonList.data || [];
@@ -303,9 +301,7 @@ export default function WorkingHourCard({ header: initialHeader }) {
   };
 
   const handleDelete = () => {
-    console.log(
-      "Delete clicked – you can call DELETE /api/hourly-productions/:id from a specific row"
-    );
+    console.log("Delete clicked – you can call DELETE /api/hourly-productions/:id");
   };
 
   return (
@@ -318,8 +314,7 @@ export default function WorkingHourCard({ header: initialHeader }) {
             <span className="font-medium">Production User:</span> {headerProdName}
           </div>
           <div>
-            <span className="font-medium">Planned Working Hours:</span>{" "}
-            {totalWorkingHours}
+            <span className="font-medium">Planned Working Hours:</span> {totalWorkingHours}
           </div>
         </div>
       </div>
@@ -340,13 +335,11 @@ export default function WorkingHourCard({ header: initialHeader }) {
         </div>
       )}
 
-      {/* 🔹 Auto-refreshing summary values - Updates every 3 seconds */}
+      {/* Live summary */}
       <div className="text-[11px] text-slate-700 bg-slate-50 rounded-lg p-3 space-y-1.5 border border-slate-200">
         <div className="flex justify-between items-center pb-1 border-b border-slate-300">
           <span className="font-semibold text-slate-800">Live Data</span>
-          <span className="text-[10px] text-emerald-600 animate-pulse">
-            ● Auto-refresh every 3s
-          </span>
+          <span className="text-[10px] text-emerald-600 animate-pulse">● Auto-refresh every 3s</span>
         </div>
         <div className="grid grid-cols-2 gap-x-4 gap-y-1">
           <div>
@@ -354,14 +347,12 @@ export default function WorkingHourCard({ header: initialHeader }) {
             <span className="font-semibold text-slate-900">{manpowerPresent}</span>
           </div>
           <div>
-            <span className="font-medium text-slate-600">SMV (min/pc):</span>{" "}
+            <span className="font-medium text-slate-600">SMV:</span>{" "}
             <span className="font-semibold text-slate-900">{smv}</span>
           </div>
           <div>
             <span className="font-medium text-slate-600">Plan Efficiency:</span>{" "}
-            <span className="font-semibold text-slate-900">
-              {planEfficiencyPercent}%
-            </span>
+            <span className="font-semibold text-slate-900">{planEfficiencyPercent}%</span>
           </div>
           <div>
             <span className="font-medium text-slate-600">Day Target:</span>{" "}
@@ -369,47 +360,33 @@ export default function WorkingHourCard({ header: initialHeader }) {
           </div>
           <div>
             <span className="font-medium text-slate-600">Base Target / Hour:</span>{" "}
-            <span className="font-semibold text-slate-900">
-              {formatNumber(baseTargetPerHour)}
-            </span>
+            <span className="font-semibold text-slate-900">{formatNumber(baseTargetPerHour)}</span>
           </div>
           <div>
-            <span className="font-medium text-slate-600">
-              Shortfall from prev hour:
-            </span>{" "}
-            <span className="font-semibold text-amber-700">
-              {formatNumber(shortfallPrevHour)}
-            </span>
+            <span className="font-medium text-slate-600">Cumulative Shortfall:</span>{" "}
+            <span className="font-semibold text-amber-700">{formatNumber(cumulativeShortfall)}</span>
           </div>
           <div className="col-span-2">
-            <span className="font-medium text-slate-600">
-              Dynamic target this hour:
-            </span>{" "}
-            <span className="font-semibold text-blue-700">
-              {formatNumber(dynamicTargetThisHour)}
+            <span className="font-medium text-slate-600">Dynamic target this hour:</span>{" "}
+            <span className="font-semibold text-blue-700">{formatNumber(dynamicTargetThisHour)}</span>
+          </div>
+          <div className="col-span-2">
+            <span className="font-medium text-slate-600">Cumulative Variance (all prev hours):</span>{" "}
+            <span className={`font-semibold ${cumulativeVariance >= 0 ? "text-green-700" : "text-red-700"}`}>
+              {formatNumber(cumulativeVariance)}
             </span>
           </div>
         </div>
         {latestDynamicFromServer !== null && (
           <div className="pt-1 border-t border-slate-200">
-            <span className="font-medium text-slate-600">
-              Last Saved Dynamic Target:
-            </span>{" "}
-            <span className="font-semibold text-slate-900">
-              {formatNumber(latestDynamicFromServer)}
-            </span>
+            <span className="font-medium text-slate-600">Last Saved Dynamic Target:</span>{" "}
+            <span className="font-semibold text-slate-900">{formatNumber(latestDynamicFromServer)}</span>
           </div>
         )}
         {previousRecord && (
           <div>
-            <span className="font-medium text-slate-600">
-              Prev hour variance (achieved - target):
-            </span>{" "}
-            <span
-              className={`font-semibold ${
-                previousVariance >= 0 ? "text-green-700" : "text-red-700"
-              }`}
-            >
+            <span className="font-medium text-slate-600">Last hour variance:</span>{" "}
+            <span className={`font-semibold ${previousVariance >= 0 ? "text-green-700" : "text-red-700"}`}>
               {formatNumber(previousVariance)}
             </span>
           </div>
@@ -431,7 +408,6 @@ export default function WorkingHourCard({ header: initialHeader }) {
           </thead>
           <tbody>
             <tr className="border-b">
-              {/* Hour selector */}
               <td className="px-2 py-2 align-top">
                 <select
                   className="w-full rounded border px-2 py-1 text-xs"
@@ -444,32 +420,23 @@ export default function WorkingHourCard({ header: initialHeader }) {
                     </option>
                   ))}
                 </select>
-                <p className="mt-1 text-[10px] text-gray-500">
-                  Current hour (1 ~ {totalWorkingHours})
-                </p>
+                <p className="mt-1 text-[10px] text-gray-500">Current hour (1 ~ {totalWorkingHours})</p>
               </td>
 
-              {/* Base hourly target */}
               <td className="px-2 py-2 align-top">
-                <div className="rounded border bg-gray-50 px-2 py-1">
-                  {formatNumber(baseTargetPerHour)}
-                </div>
+                <div className="rounded border bg-gray-50 px-2 py-1">{formatNumber(baseTargetPerHour)}</div>
                 <p className="mt-1 text-[10px] text-gray-500 leading-tight">
-                  (Manpower × 60 ÷ SMV × Plan %)
+                  (Manpower × 60 × Plan % ÷ SMV)
                 </p>
               </td>
 
-              {/* Dynamic target this hour */}
               <td className="px-2 py-2 align-top">
-                <div className="rounded border bg-amber-50 px-2 py-1">
-                  {formatNumber(dynamicTargetThisHour)}
-                </div>
+                <div className="rounded border bg-amber-50 px-2 py-1">{formatNumber(dynamicTargetThisHour)}</div>
                 <p className="mt-1 text-[10px] text-amber-700 leading-tight">
-                  Base + shortfall from previous hour
+                  Base + cumulative shortfall
                 </p>
               </td>
 
-              {/* Achieved Qty (this hour) */}
               <td className="px-2 py-2 align-top">
                 <input
                   type="number"
@@ -479,26 +446,18 @@ export default function WorkingHourCard({ header: initialHeader }) {
                   onChange={(e) => setAchievedInput(e.target.value)}
                   placeholder="Output this hour"
                 />
-                <p className="mt-1 text-[10px] text-gray-500">
-                  Actual pieces this hour
-                </p>
+                <p className="mt-1 text-[10px] text-gray-500">Actual pieces this hour</p>
               </td>
 
-              {/* Hourly efficiency (this hour) */}
               <td className="px-2 py-2 align-top">
-                <div className="rounded border bg-gray-50 px-2 py-1">
-                  {formatNumber(hourlyEfficiency)}
-                </div>
+                <div className="rounded border bg-gray-50 px-2 py-1">{formatNumber(hourlyEfficiency)}</div>
                 <p className="mt-1 text-[10px] text-gray-500 leading-tight">
                   Output × SMV ÷ (Manpower × 60) × 100
                 </p>
               </td>
 
-              {/* Achieve Efficiency (preview) */}
               <td className="px-2 py-2 align-top">
-                <div className="rounded border bg-gray-50 px-2 py-1">
-                  {formatNumber(achieveEfficiency)}
-                </div>
+                <div className="rounded border bg-gray-50 px-2 py-1">{formatNumber(achieveEfficiency)}</div>
                 <p className="mt-1 text-[10px] text-gray-500 leading-tight">
                   Hourly Output × SMV ÷ (Manpower × 60) × Working Hour
                 </p>
@@ -539,16 +498,12 @@ export default function WorkingHourCard({ header: initialHeader }) {
         <div className="flex items-center justify-between text-xs mb-2">
           <h3 className="font-semibold">Posted hourly records</h3>
           {loadingRecords && (
-            <span className="text-[10px] text-slate-500">
-              Loading hourly records...
-            </span>
+            <span className="text-[10px] text-slate-500">Loading hourly records...</span>
           )}
         </div>
 
         {hourlyRecords.length === 0 ? (
-          <p className="text-[11px] text-slate-500">
-            No hourly records saved yet for this header.
-          </p>
+          <p className="text-[11px] text-slate-500">No hourly records saved yet for this header.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-[11px] border-t">
@@ -568,26 +523,14 @@ export default function WorkingHourCard({ header: initialHeader }) {
                 {hourlyRecords.map((rec) => (
                   <tr key={rec._id} className="border-b">
                     <td className="px-2 py-1">{rec.hour}</td>
-                    <td className="px-2 py-1">
-                      {formatNumber(rec.dynamicTarget)}
-                    </td>
+                    <td className="px-2 py-1">{formatNumber(rec.dynamicTarget)}</td>
                     <td className="px-2 py-1">{rec.achievedQty}</td>
+                    <td className="px-2 py-1">{formatNumber(rec.varianceQty)}</td>
+                    <td className="px-2 py-1">{formatNumber(rec.hourlyEfficiency)}</td>
+                    <td className="px-2 py-1">{formatNumber(rec.achieveEfficiency)}</td>
+                    <td className="px-2 py-1">{formatNumber(rec.totalEfficiency)}</td>
                     <td className="px-2 py-1">
-                      {formatNumber(rec.varianceQty)}
-                    </td>
-                    <td className="px-2 py-1">
-                      {formatNumber(rec.hourlyEfficiency)}
-                    </td>
-                    <td className="px-2 py-1">
-                      {formatNumber(rec.achieveEfficiency)}
-                    </td>
-                    <td className="px-2 py-1">
-                      {formatNumber(rec.totalEfficiency)}
-                    </td>
-                    <td className="px-2 py-1">
-                      {rec.updatedAt
-                        ? new Date(rec.updatedAt).toLocaleTimeString()
-                        : "-"}
+                      {rec.updatedAt ? new Date(rec.updatedAt).toLocaleTimeString() : "-"}
                     </td>
                   </tr>
                 ))}
