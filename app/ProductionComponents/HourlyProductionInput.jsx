@@ -1,7 +1,7 @@
 // app/components/ProductionInputForm.jsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import ProductionSignInOut from "../components/auth/ProductionSignInOut";
 import { useProductionAuth } from "../hooks/useProductionAuth";
 import { useAuth } from "../hooks/useAuth";
@@ -9,6 +9,17 @@ import { useAuth } from "../hooks/useAuth";
 export default function ProductionInputForm() {
   const { ProductionAuth, loading: productionLoading } = useProductionAuth();
   const { auth, loading: authLoading } = useAuth();
+
+  // 🔹 Detect user timezone + compute today's YYYY-MM-DD (local to user)
+  const timeZone = useMemo(
+    () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+    []
+  );
+  const computeTodayKey = () =>
+    new Intl.DateTimeFormat("en-CA", { timeZone }).format(new Date()); // YYYY-MM-DD
+
+  const [todayKey, setTodayKey] = useState(computeTodayKey);
+  const lastTickRef = useRef(Date.now());
 
   // 🔹 Main form state (includes smv)
   const [form, setForm] = useState({
@@ -60,10 +71,39 @@ export default function ProductionInputForm() {
       smv: "",
     });
 
-  // 🔹 Load today's header for this production user
+  // 🔹 Auto-clear at midnight (user's local timezone)
+  useEffect(() => {
+    const tick = () => {
+      const now = Date.now();
+      // avoid too-frequent cpu wakeups; check at most once/minute
+      if (now - lastTickRef.current < 60_000) return;
+      lastTickRef.current = now;
+
+      const current = computeTodayKey();
+      if (current !== todayKey) {
+        console.log(`📅 New day detected: ${todayKey} → ${current}`);
+        setTodayKey(current); // triggers data refetch below
+        setHeaderId(null);
+        resetForm(); // clear inputs for the new day
+        setError("");
+        setSuccess("");
+      }
+    };
+
+    const id = setInterval(tick, 20_000); // check every 20 seconds
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [todayKey, timeZone]);
+
+  // 🔹 Load "today's" header for this production user (in user's local TZ)
   useEffect(() => {
     if (productionLoading) return;
-    if (!ProductionAuth?.id) return;
+    if (!ProductionAuth?.id) {
+      // No user logged in, ensure form is blank
+      setHeaderId(null);
+      resetForm();
+      return;
+    }
 
     const fetchToday = async () => {
       try {
@@ -71,27 +111,34 @@ export default function ProductionInputForm() {
         setError("");
         setSuccess("");
 
-        const res = await fetch(
-          `/api/production-headers?productionUserId=${ProductionAuth.id}`
-        );
+        const url = new URL("/api/production-headers", window.location.origin);
+        url.searchParams.set("productionUserId", ProductionAuth.id);
+        url.searchParams.set("date", todayKey);
+
+        const res = await fetch(url, { cache: "no-store" });
         const json = await res.json();
 
         if (res.ok && json.success && json.data) {
+          // Found existing data for today
           fillFormFromHeader(json.data);
           setHeaderId(json.data._id);
         } else {
+          // No data for today - blank form
           setHeaderId(null);
+          resetForm();
         }
       } catch (err) {
         console.error(err);
         setError("Failed to load today's production header");
+        setHeaderId(null);
+        resetForm();
       } finally {
         setLoadingExisting(false);
       }
     };
 
     fetchToday();
-  }, [productionLoading, ProductionAuth?.id]);
+  }, [productionLoading, ProductionAuth?.id, todayKey]);
 
   // 🔹 Handle input change
   const handleChange = (e) => {
@@ -120,7 +167,7 @@ export default function ProductionInputForm() {
     };
   };
 
-  // 🔹 Save / Update
+  // 🔹 Save / Update (always bound to today's date)
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
@@ -135,11 +182,18 @@ export default function ProductionInputForm() {
     setSaving(true);
 
     try {
+      // 🔹 For updates (PATCH), don't send productionDate
+      // For new records (POST), include productionDate
       const payload = {
         ...form,
         productionUser: buildProductionUserSnapshot(),
         qualityUser: buildQualityUserSnapshot(),
       };
+
+      // Only add productionDate for POST (new records)
+      if (!isUpdate) {
+        payload.productionDate = todayKey;
+      }
 
       const endpoint = isUpdate
         ? `/api/production-headers/${headerId}`
@@ -181,7 +235,7 @@ export default function ProductionInputForm() {
     }
   };
 
-  // 🔹 Delete header
+  // 🔹 Delete header (today's one if loaded)
   const handleDelete = async () => {
     if (!headerId) return;
     setError("");
@@ -230,10 +284,10 @@ export default function ProductionInputForm() {
         {/* Title */}
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-sm md:text-base font-semibold text-slate-900">
-            Production Header (Today)
+            Production Header ({todayKey})
           </h2>
           <p className="text-[11px] text-slate-500">
-            Quick production & manpower summary.
+            Daily production & manpower summary.
           </p>
         </div>
 

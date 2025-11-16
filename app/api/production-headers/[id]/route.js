@@ -91,7 +91,7 @@ export async function PATCH(request, context) {
       "planEfficiency",
       "todayTarget",
       "achieve",
-      "smv", // ✅ allow updating SMV
+      "smv",
     ];
 
     for (const field of fields) {
@@ -103,8 +103,10 @@ export async function PATCH(request, context) {
       }
     }
 
+    // Don't allow changing productionDate via PATCH
+    // Each date should have its own unique record
     if (body.productionDate) {
-      update.productionDate = body.productionDate;
+      errors.push("Cannot change productionDate via PATCH. Create a new record instead.");
     }
 
     if (body.productionUser) {

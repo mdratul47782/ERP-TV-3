@@ -5,7 +5,7 @@ import { ProductionHeaderModel } from "@/models/ProductionHeader-model";
 // 🔹 Today as "YYYY-MM-DD"
 function getTodayDateString() {
   const now = new Date();
-  return now.toISOString().slice(0, 10); // e.g. "2025-11-15"
+  return now.toISOString().slice(0, 10); // e.g. "2025-11-16"
 }
 
 // 🔹 Optional number: allow blank
@@ -35,6 +35,7 @@ export async function GET(request) {
       );
     }
 
+    // 🔹 Fetch the record for the specific date
     const header = await ProductionHeaderModel.findOne({
       "productionUser.id": productionUserId,
       productionDate: date,
@@ -54,7 +55,7 @@ export async function GET(request) {
 }
 
 // 🔸 POST /api/production-headers
-//    → Upsert header for today (or provided productionDate)
+//    → Create or update header for the specified date
 export async function POST(request) {
   try {
     await dbConnect();
@@ -71,10 +72,10 @@ export async function POST(request) {
       planEfficiency,
       todayTarget,
       achieve,
-      smv, // ✅ NEW
+      smv,
       productionUser,
       qualityUser,
-      productionDate, // optional from client
+      productionDate, // 🔹 from client (user's local date)
     } = body;
 
     if (!productionUser || !productionUser.id) {
@@ -105,7 +106,7 @@ export async function POST(request) {
       ),
       todayTarget: parseOptionalNumber(todayTarget, "todayTarget", errors),
       achieve: parseOptionalNumber(achieve, "achieve", errors),
-      smv: parseOptionalNumber(smv, "smv", errors), // ✅ NEW
+      smv: parseOptionalNumber(smv, "smv", errors),
 
       // Production user snapshot (no password)
       productionUser: {
@@ -148,7 +149,9 @@ export async function POST(request) {
       {
         success: true,
         data: saved,
-        message: "Production header saved successfully",
+        message: existing
+          ? "Production header updated successfully"
+          : "Production header created successfully",
       },
       { status: 200 }
     );

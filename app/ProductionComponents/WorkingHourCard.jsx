@@ -30,13 +30,16 @@ export default function WorkingHourCard({ header: initialHeader }) {
 
   // 🔹 Auto-refresh header data every 3 seconds
   useEffect(() => {
-    if (!h?._id || !ProductionAuth?.id) return;
+    if (!ProductionAuth?.id) return;
 
     const fetchHeaderData = async () => {
       try {
+        // Get today's date in YYYY-MM-DD format
+        const todayDate = new Intl.DateTimeFormat("en-CA").format(new Date());
+        
         const params = new URLSearchParams({
           productionUserId: ProductionAuth.id,
-          headerDate: h.headerDate || new Intl.DateTimeFormat("en-CA").format(new Date()),
+          date: todayDate, // Use "date" param to match API
         });
 
         const res = await fetch(`/api/production-headers?${params.toString()}`, {
@@ -46,6 +49,9 @@ export default function WorkingHourCard({ header: initialHeader }) {
 
         if (res.ok && json.success && json.data) {
           setHeader(json.data);
+        } else {
+          // No data for today, set to null
+          setHeader(null);
         }
       } catch (err) {
         console.error("Failed to refresh header data:", err);
@@ -59,7 +65,7 @@ export default function WorkingHourCard({ header: initialHeader }) {
     const intervalId = setInterval(fetchHeaderData, 3000);
 
     return () => clearInterval(intervalId);
-  }, [h?._id, h?.headerDate, ProductionAuth?.id]);
+  }, [ProductionAuth?.id]);
 
   useEffect(() => {
     console.log("WorkingHourCard header:", h);
@@ -449,7 +455,7 @@ export default function WorkingHourCard({ header: initialHeader }) {
                   {formatNumber(baseTargetPerHour)}
                 </div>
                 <p className="mt-1 text-[10px] text-gray-500 leading-tight">
-                  (Day target ÷ hours) or (Manpower × 60 ÷ SMV × Plan %)
+                  (Manpower × 60 ÷ SMV × Plan %)
                 </p>
               </td>
 
