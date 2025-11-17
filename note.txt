@@ -137,3 +137,6 @@
 চাইলে একই লজিক API-তেও (POST time) `dynamicTarget` হিসেবে পাঠানো হচ্ছে:
 `dynamicTarget = baseTargetPerHour + previousHourShortfall` (রাউন্ড করে UI-তে দেখাও, সেভের সময়েও পাঠানো আছে)।
 এতে UI, হিসাব আর DB—সব জায়গায় একই রুল বজায় থাকে।
+
+
+[link:https://chatgpt.com/s/t_691ae30bc97c8191a7b36b8b957b9e58]
