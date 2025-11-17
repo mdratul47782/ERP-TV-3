@@ -17,7 +17,7 @@ export default async function ProductionHomePage() {
 
   return (
     <main className="min-h-screen bg-slate-50 py-6">
-      <div className="mx-auto max-w-7xl px-3 space-y-4">
+      <div className="mx-auto max-w-7xl px-3 space-y-2">
         <header className="space-y-1">
           <h1 className="text-xl font-semibold text-slate-900">
             Production Dashboard

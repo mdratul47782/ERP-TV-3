@@ -140,10 +140,36 @@ export default function ProductionInputForm() {
     fetchToday();
   }, [productionLoading, ProductionAuth?.id, todayKey]);
 
-  // 🔹 Handle input change
+  // 🔹 Handle input change + auto Manpower Absent
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setForm((prev) => ({ ...prev, [name]: value }));
+
+    setForm((prev) => {
+      const next = { ...prev, [name]: value };
+
+      // 🔹 Auto-calc Manpower Absent when Total Man Power / Present change
+      if (name === "operatorTo" || name === "manpowerPresent") {
+        const total = Number(next.operatorTo);
+        const present = Number(next.manpowerPresent);
+
+        // valid numbers and not empty strings
+        if (
+          next.operatorTo !== "" &&
+          next.manpowerPresent !== "" &&
+          Number.isFinite(total) &&
+          Number.isFinite(present)
+        ) {
+          const diff = total - present;
+          // never let it go negative; if total < present, clamp to 0
+          next.manpowerAbsent = diff >= 0 ? diff.toString() : "0";
+        } else {
+          // one of them missing / invalid -> clear absent
+          next.manpowerAbsent = "";
+        }
+      }
+
+      return next;
+    });
   };
 
   // 🔹 Snapshots (no password)
@@ -343,11 +369,12 @@ export default function ProductionInputForm() {
         {/* Inputs */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           <Field
-            label="Operator TO"
+            label="Total Man Power"
             name="operatorTo"
             value={form.operatorTo}
             onChange={handleChange}
             placeholder="32"
+            type="number"
           />
           <Field
             label="Manpower Present"
@@ -357,13 +384,14 @@ export default function ProductionInputForm() {
             placeholder="30"
             type="number"
           />
+          {/* 🔹 Auto-calculated from Total - Present */}
           <Field
-            label="Manpower Absent"
+            label="Manpower Absent (auto)"
             name="manpowerAbsent"
             value={form.manpowerAbsent}
-            onChange={handleChange}
-            placeholder="2"
+            placeholder="Auto = Total - Present"
             type="number"
+            readOnly
           />
           <Field
             label="Working Hour"
