@@ -129,9 +129,7 @@ export default function WorkingHourCard({ header: initialHeader }) {
   const targetFromTodayTarget =
     totalWorkingHours > 0 ? todayTarget / totalWorkingHours : 0;
 
-  // 🔹 ROUND base target per hour (e.g., 12.75 → 13)
-  const baseTargetPerHourRaw = targetFromCapacity || targetFromTodayTarget || 0;
-  const baseTargetPerHour = Math.round(baseTargetPerHourRaw);
+  const baseTargetPerHour = targetFromCapacity || targetFromTodayTarget || 0;
 
   const achievedThisHour = Number(achievedInput) || 0;
 
@@ -155,7 +153,10 @@ export default function WorkingHourCard({ header: initialHeader }) {
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // 🔹 Decorate records with per-hour and running variances (uses ROUNDED base)
+  // 🔹 NEW: Decorate records with:
+  //   - _perHourVarDynamic: (Achieved − DynamicTarget) for that hour
+  //   - _netVarVsBaseToDate: cumulative variance vs BASE target up to that hour
+  //     → This is the “(5 − 2) = 3” running logic you asked for.
   // ─────────────────────────────────────────────────────────────────────────────
   const recordsSorted = hourlyRecords
     .map((rec) => ({ ...rec, _hourNum: Number(rec.hour) }))
@@ -167,17 +168,17 @@ export default function WorkingHourCard({ header: initialHeader }) {
 
   const recordsDecorated = recordsSorted.map((rec) => {
     const dynTarget = toNum(
-      rec.dynamicTarget ?? baseTargetPerHour, // fallback uses rounded base
+      rec.dynamicTarget ?? baseTargetPerHour,
       baseTargetPerHour
     );
     const achieved = toNum(rec.achievedQty, 0);
 
-    const perHourVarDynamic = achieved - dynTarget; // vs DYNAMIC target
+    const perHourVarDynamic = achieved - dynTarget; // vs DYNAMIC target (existing logic)
     runningVarDynamic += perHourVarDynamic;
 
     runningAchieved += achieved; // cumulative achieved
-    const baselineToDate = baseTargetPerHour * rec._hourNum; // uses rounded base
-    const netVarVsBaseToDate = runningAchieved - baselineToDate; // running vs BASE
+    const baselineToDate = baseTargetPerHour * rec._hourNum;
+    const netVarVsBaseToDate = runningAchieved - baselineToDate; // ← NEW running variance vs BASE
 
     return {
       ...rec,
@@ -203,7 +204,7 @@ export default function WorkingHourCard({ header: initialHeader }) {
   const cumulativeShortfall =
     cumulativeVarianceDynamicPrev < 0 ? -cumulativeVarianceDynamicPrev : 0;
 
-  // 🔹 Dynamic target for the current hour (unchanged rule; base is rounded)
+  // 🔹 Dynamic target for the current hour (unchanged business rule)
   const dynamicTargetThisHour = recordForSelectedHour
     ? Number(recordForSelectedHour.dynamicTarget ?? baseTargetPerHour)
     : baseTargetPerHour + cumulativeShortfall;
@@ -222,7 +223,7 @@ export default function WorkingHourCard({ header: initialHeader }) {
     .filter((rec) => rec._hourNum <= selectedHourInt)
     .reduce((sum, rec) => sum + toNum(rec.achievedQty, 0), 0);
 
-  const baselineToDateSelected = baseTargetPerHour * selectedHourInt; // uses rounded base
+  const baselineToDateSelected = baseTargetPerHour * selectedHourInt;
   const netVarVsBaseToDateSelected =
     achievedToDatePosted - baselineToDateSelected;
 
@@ -433,7 +434,7 @@ export default function WorkingHourCard({ header: initialHeader }) {
               Base Target / Hour:
             </span>{" "}
             <span className="font-semibold text-slate-900">
-              {formatNumber(baseTargetPerHour, 0)} {/* show as integer */}
+              {formatNumber(baseTargetPerHour)}
             </span>
           </div>
 
@@ -451,11 +452,11 @@ export default function WorkingHourCard({ header: initialHeader }) {
               Dynamic target this hour:
             </span>{" "}
             <span className="font-semibold text-blue-700">
-              {formatNumber(dynamicTargetThisHour, 0)} {/* optional integer look */}
+              {formatNumber(dynamicTargetThisHour)}
             </span>
           </div>
 
-          {/* 🔹 Net variance vs BASE to date (uses rounded base) */}
+          {/* 🔹 NEW: Net variance vs BASE to date (this is your “5 − 2 = 3” number) */}
           <div className="col-span-2">
             <span className="font-medium text-slate-600">
               Net variance vs base (to date):
@@ -467,7 +468,7 @@ export default function WorkingHourCard({ header: initialHeader }) {
                   : "text-red-700"
               }`}
             >
-              {formatNumber(netVarVsBaseToDateSelected, 0)}
+              {formatNumber(netVarVsBaseToDateSelected)}
             </span>
           </div>
 
@@ -483,7 +484,7 @@ export default function WorkingHourCard({ header: initialHeader }) {
                   : "text-red-700"
               }`}
             >
-              {formatNumber(cumulativeVarianceDynamicPrev, 0)}
+              {formatNumber(cumulativeVarianceDynamicPrev)}
             </span>
           </div>
         </div>
@@ -494,7 +495,7 @@ export default function WorkingHourCard({ header: initialHeader }) {
               Last Saved Dynamic Target:
             </span>{" "}
             <span className="font-semibold text-slate-900">
-              {formatNumber(latestDynamicFromServer, 0)}
+              {formatNumber(latestDynamicFromServer)}
             </span>
           </div>
         )}
@@ -550,7 +551,7 @@ export default function WorkingHourCard({ header: initialHeader }) {
 
               <td className="px-2 py-2 align-top">
                 <div className="rounded border bg-gray-50 px-2 py-1">
-                  {formatNumber(baseTargetPerHour, 0)} {/* integer */}
+                  {formatNumber(baseTargetPerHour)}
                 </div>
                 <p className="mt-1 text-[10px] text-gray-500 leading-tight">
                   (Manpower × 60 × Plan % ÷ SMV)
@@ -559,7 +560,7 @@ export default function WorkingHourCard({ header: initialHeader }) {
 
               <td className="px-2 py-2 align-top">
                 <div className="rounded border bg-amber-50 px-2 py-1">
-                  {formatNumber(dynamicTargetThisHour, 0)}
+                  {formatNumber(dynamicTargetThisHour)}
                 </div>
                 <p className="mt-1 text-[10px] text-amber-700 leading-tight">
                   Base + cumulative shortfall
@@ -655,7 +656,7 @@ export default function WorkingHourCard({ header: initialHeader }) {
                   <th className="px-2 py-1 text-left">
                     Δ Var (hour vs dynamic)
                   </th>
-                  {/* 🔹 Running variance vs base (rounded) */}
+                  {/* 🔹 NEW running variance vs base */}
                   <th className="px-2 py-1 text-left">
                     Net Var vs Base (to date)
                   </th>
@@ -670,7 +671,7 @@ export default function WorkingHourCard({ header: initialHeader }) {
                   <tr key={rec._id} className="border-b">
                     <td className="px-2 py-1">{rec.hour}</td>
                     <td className="px-2 py-1">
-                      {formatNumber(rec.dynamicTarget ?? baseTargetPerHour, 0)}
+                      {formatNumber(rec.dynamicTarget ?? baseTargetPerHour)}
                     </td>
                     <td className="px-2 py-1">{rec.achievedQty}</td>
                     <td
@@ -680,7 +681,7 @@ export default function WorkingHourCard({ header: initialHeader }) {
                           : "text-red-700"
                       }`}
                     >
-                      {formatNumber(previousVariance, 0)}
+                      {formatNumber(rec._perHourVarDynamic)}
                     </td>
                     <td
                       className={`px-2 py-1 ${
@@ -689,7 +690,7 @@ export default function WorkingHourCard({ header: initialHeader }) {
                           : "text-red-700"
                       }`}
                     >
-                      {formatNumber(rec._netVarVsBaseToDate, 0)}
+                      {formatNumber(rec._netVarVsBaseToDate)}
                     </td>
                     <td className="px-2 py-1">
                       {formatNumber(rec.hourlyEfficiency)}

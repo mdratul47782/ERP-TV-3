@@ -126,6 +126,7 @@ export async function POST(request) {
     // 🔹 Load previous hours for:
     //  - total achieved before this hour
     //  - sum of previous achieveEfficiency (for Total Efficiency)
+    //  - cumulative variance calculation
     const previousRecords = await HourlyProductionModel.find({
       headerId,
       "productionUser.id": productionUser.id,
@@ -136,12 +137,16 @@ export async function POST(request) {
 
     let totalAchievedBefore = 0;
     let sumAchieveEffPrev = 0;
+    let cumulativeVariancePrevHours = 0;
 
     for (const rec of previousRecords) {
       const prevAchieved = toNumberOrZero(rec.achievedQty);
       const prevAchieveEff = toNumberOrZero(rec.achieveEfficiency);
+      const prevVariance = toNumberOrZero(rec.varianceQty);
+      
       totalAchievedBefore += prevAchieved;
       sumAchieveEffPrev += prevAchieveEff;
+      cumulativeVariancePrevHours += prevVariance;
     }
 
     // 🔹 Previous hour's variance (achieved - dynamicTarget)
@@ -154,22 +159,22 @@ export async function POST(request) {
       ? toNumberOrZero(previousRecord.varianceQty)
       : 0;
 
-    // Shortfall from previous hour = abs(negative variance), else 0
-    // Example:
-    //   H1: base = 49, achieved = 40
-    //       variance = 40 - 49 = -9 => shortfallPrevHour = 9
-    //   H2: dynamicTarget = 49 + 9 = 58
-    const shortfallPrevHour =
-      previousVariance < 0 ? -previousVariance : 0;
+    // Shortfall from ALL previous hours (cumulative negative variance)
+    // If cumulative is negative, we're behind; convert to positive shortfall
+    const shortfallAllPrevHours =
+      cumulativeVariancePrevHours < 0 ? -cumulativeVariancePrevHours : 0;
 
-    // 🔹 Dynamic target for this hour (Base + previous shortfall)
-    const dynamicTarget = baseTargetPerHour + shortfallPrevHour;
+    // 🔹 Dynamic target for this hour (Base + cumulative shortfall)
+    const dynamicTarget = baseTargetPerHour + shortfallAllPrevHours;
 
-    // 🔹 Variance for this hour (your convention)
+    // 🔹 Variance for this hour
     // varianceQty = achieved - dynamicTarget
     //  < 0 => short (behind)
     //  > 0 => ahead
     const varianceQty = achievedQty - dynamicTarget;
+
+    // 🔹 Cumulative variance up to and including this hour
+    const cumulativeVariance = cumulativeVariancePrevHours + varianceQty;
 
     // 🔹 Hourly efficiency (this hour)
     //   Hourly Eff % = Hourly Output * SMV / (Manpower * 60) * 100
@@ -203,10 +208,11 @@ export async function POST(request) {
       achievedQty,
       baseTargetPerHour,
       dynamicTarget,
-      varianceQty,        // achieved - target (can be negative or positive)
+      varianceQty,           // achieved - target (can be negative or positive)
+      cumulativeVariance,    // sum of all variances from hour 1 to current
       hourlyEfficiency,
-      achieveEfficiency,  // overall till this hour
-      totalEfficiency,    // average from 1st hour to this hour
+      achieveEfficiency,     // overall till this hour
+      totalEfficiency,       // average from 1st hour to this hour
       productionUser: {
         id: productionUser.id,
         Production_user_name: productionUser.Production_user_name,
