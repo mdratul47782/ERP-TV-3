@@ -4,6 +4,7 @@
 import { useEffect, useState } from "react";
 import { useProductionAuth } from "../hooks/useProductionAuth";
 
+// 🔹 Generic formatter (we control digits where we call it)
 function formatNumber(value, digits = 2) {
   const num = Number(value);
   if (!Number.isFinite(num)) return "-";
@@ -102,9 +103,7 @@ export default function WorkingHourCard({ header: initialHeader }) {
     fetchRecords();
   }, [h?._id, ProductionAuth?.id]);
 
-  // 🔹 ALL HOOKS MUST BE CALLED BEFORE ANY CONDITIONAL RENDERING
-
-  // Calculate values (safe to do even with null data)
+  // 🔹 Calculations
   const totalWorkingHours = h?.workingHour ?? 1;
   const manpowerPresent = h?.manpowerPresent ?? 0;
   const smv = h?.smv ?? 1;
@@ -183,8 +182,7 @@ export default function WorkingHourCard({ header: initialHeader }) {
     authProdName &&
     headerProdName.toLowerCase() === authProdName.toLowerCase();
 
-  // 🔹 NOW we can do conditional rendering (all hooks already called)
-  
+  // 🔹 Conditional rendering after hooks
   if (productionLoading) {
     return (
       <div className="rounded-2xl border border-gray-300 bg-white shadow-sm p-4 text-xs">
@@ -216,15 +214,18 @@ export default function WorkingHourCard({ header: initialHeader }) {
           Header does not belong to the logged-in production user.
         </div>
         <div className="text-slate-700">
-          <span className="font-medium">Header production user:</span> {headerProdName || "N/A"}
+          <span className="font-medium">Header production user:</span>{" "}
+          {headerProdName || "N/A"}
         </div>
         <div className="text-slate-700">
-          <span className="font-medium">Logged-in production user:</span> {authProdName || "N/A"}
+          <span className="font-medium">Logged-in production user:</span>{" "}
+          {authProdName || "N/A"}
         </div>
       </div>
     );
   }
 
+  // 🔹 Save handler
   const handleSave = async () => {
     try {
       setSaving(true);
@@ -267,6 +268,7 @@ export default function WorkingHourCard({ header: initialHeader }) {
         );
       }
 
+      // Reload list
       const params = new URLSearchParams({
         headerId: h._id,
         productionUserId: ProductionAuth.id,
@@ -339,7 +341,9 @@ export default function WorkingHourCard({ header: initialHeader }) {
       <div className="text-[11px] text-slate-700 bg-slate-50 rounded-lg p-3 space-y-1.5 border border-slate-200">
         <div className="flex justify-between items-center pb-1 border-b border-slate-300">
           <span className="font-semibold text-slate-800">Live Data</span>
-          <span className="text-[10px] text-emerald-600 animate-pulse">● Auto-refresh every 3s</span>
+          <span className="text-[10px] text-emerald-600 animate-pulse">
+            ● Auto-refresh every 3s
+          </span>
         </div>
         <div className="grid grid-cols-2 gap-x-4 gap-y-1">
           <div>
@@ -360,19 +364,33 @@ export default function WorkingHourCard({ header: initialHeader }) {
           </div>
           <div>
             <span className="font-medium text-slate-600">Base Target / Hour:</span>{" "}
-            <span className="font-semibold text-slate-900">{formatNumber(baseTargetPerHour)}</span>
+            {/* 🔹 Rounded to integer */}
+            <span className="font-semibold text-slate-900">
+              {formatNumber(baseTargetPerHour, 0)}
+            </span>
           </div>
           <div>
             <span className="font-medium text-slate-600">Cumulative Shortfall:</span>{" "}
-            <span className="font-semibold text-amber-700">{formatNumber(cumulativeShortfall)}</span>
+            <span className="font-semibold text-amber-700">
+              {formatNumber(cumulativeShortfall)}
+            </span>
           </div>
           <div className="col-span-2">
             <span className="font-medium text-slate-600">Dynamic target this hour:</span>{" "}
-            <span className="font-semibold text-blue-700">{formatNumber(dynamicTargetThisHour)}</span>
+            {/* 🔹 Rounded to integer */}
+            <span className="font-semibold text-blue-700">
+              {formatNumber(dynamicTargetThisHour, 0)}
+            </span>
           </div>
           <div className="col-span-2">
-            <span className="font-medium text-slate-600">Cumulative Variance (all prev hours):</span>{" "}
-            <span className={`font-semibold ${cumulativeVariance >= 0 ? "text-green-700" : "text-red-700"}`}>
+            <span className="font-medium text-slate-600">
+              Cumulative Variance (all prev hours):
+            </span>{" "}
+            <span
+              className={`font-semibold ${
+                cumulativeVariance >= 0 ? "text-green-700" : "text-red-700"
+              }`}
+            >
               {formatNumber(cumulativeVariance)}
             </span>
           </div>
@@ -380,13 +398,20 @@ export default function WorkingHourCard({ header: initialHeader }) {
         {latestDynamicFromServer !== null && (
           <div className="pt-1 border-t border-slate-200">
             <span className="font-medium text-slate-600">Last Saved Dynamic Target:</span>{" "}
-            <span className="font-semibold text-slate-900">{formatNumber(latestDynamicFromServer)}</span>
+            {/* 🔹 Rounded to integer */}
+            <span className="font-semibold text-slate-900">
+              {formatNumber(latestDynamicFromServer, 0)}
+            </span>
           </div>
         )}
         {previousRecord && (
           <div>
             <span className="font-medium text-slate-600">Last hour variance:</span>{" "}
-            <span className={`font-semibold ${previousVariance >= 0 ? "text-green-700" : "text-red-700"}`}>
+            <span
+              className={`font-semibold ${
+                previousVariance >= 0 ? "text-green-700" : "text-red-700"
+              }`}
+            >
               {formatNumber(previousVariance)}
             </span>
           </div>
@@ -420,18 +445,26 @@ export default function WorkingHourCard({ header: initialHeader }) {
                     </option>
                   ))}
                 </select>
-                <p className="mt-1 text-[10px] text-gray-500">Current hour (1 ~ {totalWorkingHours})</p>
+                <p className="mt-1 text-[10px] text-gray-500">
+                  Current hour (1 ~ {totalWorkingHours})
+                </p>
               </td>
 
               <td className="px-2 py-2 align-top">
-                <div className="rounded border bg-gray-50 px-2 py-1">{formatNumber(baseTargetPerHour)}</div>
+                <div className="rounded border bg-gray-50 px-2 py-1">
+                  {/* 🔹 Rounded to integer */}
+                  {formatNumber(baseTargetPerHour, 0)}
+                </div>
                 <p className="mt-1 text-[10px] text-gray-500 leading-tight">
                   (Manpower × 60 × Plan % ÷ SMV)
                 </p>
               </td>
 
               <td className="px-2 py-2 align-top">
-                <div className="rounded border bg-amber-50 px-2 py-1">{formatNumber(dynamicTargetThisHour)}</div>
+                <div className="rounded border bg-amber-50 px-2 py-1">
+                  {/* 🔹 Rounded to integer */}
+                  {formatNumber(dynamicTargetThisHour, 0)}
+                </div>
                 <p className="mt-1 text-[10px] text-amber-700 leading-tight">
                   Base + cumulative shortfall
                 </p>
@@ -450,14 +483,18 @@ export default function WorkingHourCard({ header: initialHeader }) {
               </td>
 
               <td className="px-2 py-2 align-top">
-                <div className="rounded border bg-gray-50 px-2 py-1">{formatNumber(hourlyEfficiency)}</div>
+                <div className="rounded border bg-gray-50 px-2 py-1">
+                  {formatNumber(hourlyEfficiency)}
+                </div>
                 <p className="mt-1 text-[10px] text-gray-500 leading-tight">
                   Output × SMV ÷ (Manpower × 60) × 100
                 </p>
               </td>
 
               <td className="px-2 py-2 align-top">
-                <div className="rounded border bg-gray-50 px-2 py-1">{formatNumber(achieveEfficiency)}</div>
+                <div className="rounded border bg-gray-50 px-2 py-1">
+                  {formatNumber(achieveEfficiency)}
+                </div>
                 <p className="mt-1 text-[10px] text-gray-500 leading-tight">
                   Hourly Output × SMV ÷ (Manpower × 60) × Working Hour
                 </p>
@@ -498,12 +535,16 @@ export default function WorkingHourCard({ header: initialHeader }) {
         <div className="flex items-center justify-between text-xs mb-2">
           <h3 className="font-semibold">Posted hourly records</h3>
           {loadingRecords && (
-            <span className="text-[10px] text-slate-500">Loading hourly records...</span>
+            <span className="text-[10px] text-slate-500">
+              Loading hourly records...
+            </span>
           )}
         </div>
 
         {hourlyRecords.length === 0 ? (
-          <p className="text-[11px] text-slate-500">No hourly records saved yet for this header.</p>
+          <p className="text-[11px] text-slate-500">
+            No hourly records saved yet for this header.
+          </p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-[11px] border-t">
@@ -523,14 +564,28 @@ export default function WorkingHourCard({ header: initialHeader }) {
                 {hourlyRecords.map((rec) => (
                   <tr key={rec._id} className="border-b">
                     <td className="px-2 py-1">{rec.hour}</td>
-                    <td className="px-2 py-1">{formatNumber(rec.dynamicTarget)}</td>
-                    <td className="px-2 py-1">{rec.achievedQty}</td>
-                    <td className="px-2 py-1">{formatNumber(rec.varianceQty)}</td>
-                    <td className="px-2 py-1">{formatNumber(rec.hourlyEfficiency)}</td>
-                    <td className="px-2 py-1">{formatNumber(rec.achieveEfficiency)}</td>
-                    <td className="px-2 py-1">{formatNumber(rec.totalEfficiency)}</td>
                     <td className="px-2 py-1">
-                      {rec.updatedAt ? new Date(rec.updatedAt).toLocaleTimeString() : "-"}
+                      {/* 🔹 Dynamic target rounded to integer */}
+                      {formatNumber(rec.dynamicTarget, 0)}
+                    </td>
+                    <td className="px-2 py-1">{rec.achievedQty}</td>
+                    <td className="px-2 py-1">
+                      {/* 🔹 Variance rounded to integer: -9.09 → -9 */}
+                      {formatNumber(rec.varianceQty, 0)}
+                    </td>
+                    <td className="px-2 py-1">
+                      {formatNumber(rec.hourlyEfficiency)}
+                    </td>
+                    <td className="px-2 py-1">
+                      {formatNumber(rec.achieveEfficiency)}
+                    </td>
+                    <td className="px-2 py-1">
+                      {formatNumber(rec.totalEfficiency)}
+                    </td>
+                    <td className="px-2 py-1">
+                      {rec.updatedAt
+                        ? new Date(rec.updatedAt).toLocaleTimeString()
+                        : "-"}
                     </td>
                   </tr>
                 ))}
