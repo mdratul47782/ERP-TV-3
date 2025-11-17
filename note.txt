@@ -1,0 +1,139 @@
+নিশ্চিত! নিচে তোমার কম্পোনেন্টে ব্যবহৃত সব ক্যালকুলেশন সহজ ভাষায়, ছোট ফর্মুলাসহ সাজিয়ে দিচ্ছি—এক নজরে বুঝে যাবে কোনটা কিভাবে বের হচ্ছে।
+
+# 1) বেসিক ইনপুট (Header থেকে)
+
+* **manpowerPresent** = উপস্থিত অপারেটর সংখ্যা
+* **smv** = প্রতি পিসে সময় (মিনিট)
+* **planEfficiencyPercent** = পরিকল্পিত দক্ষতা (%) → `planEffDecimal = planEfficiencyPercent / 100`
+* **todayTarget** = আজকের মোট টার্গেট
+* **totalWorkingHours** = আজ কত ঘণ্টা কাজ হবে
+
+# 2) Base Target / Hour (রাউন্ডেড ইন্টিজার)
+
+দুইভাবে বের হয়—ক্যাপাসিটি আগে, না হলে Day Target ভাগ করে:
+
+* **Capacity-based target/hour**
+  [
+  \text{targetFromCapacity} = \frac{\text{manpowerPresent} \times 60 \times \text{planEffDecimal}}{\text{smv}}
+  ]
+
+* **Day Target split**
+  [
+  \text{targetFromTodayTarget} = \frac{\text{todayTarget}}{\text{totalWorkingHours}}
+  ]
+
+* **Base Target / hr (raw)**
+  [
+  \text{baseTargetPerHourRaw} = \text{targetFromCapacity} ;||; \text{targetFromTodayTarget} ;||; 0
+  ]
+
+* **Base Target / hr (rounded integer)**
+  [
+  \text{baseTargetPerHour} = \text{round}(\text{baseTargetPerHourRaw})
+  ]
+
+> উদাহরণ: 12.75 হলে 13, 12.2 হলে 12।
+
+# 3) Hourly Achieved (ইনপুট) – রাউন্ড করে নেওয়া
+
+[
+\text{achievedThisHour} = \text{round}(\text{userInput} ;||; 0)
+]
+
+# 4) Dynamic Target (Garments rule – শুধু আগের ঘন্টার shortfall carry)
+
+ডায়নামিক টার্গেট বের হয় **Base + previous hour shortfall** দিয়ে।
+
+* **Hour 1:**
+  [
+  \text{Dynamic}(1) = \text{Base}
+  ]
+
+* **Hour h (h>1):**
+  [
+  \text{Dynamic}(h) = \text{Base} + \text{Shortfall}(h-1)
+  ]
+
+* **Shortfall(h):** (শুধু নেগেটিভ ডেল্টা)
+  [
+  \text{Shortfall}(h) = \max\left(0, \text{Dynamic}(h) - \text{Achieved}(h)\right)
+  ]
+  (অর্থাৎ টার্গেটের থেকে যত কম হয়েছে সেটুকুই; অতিরিক্ত অর্জন carry হয় না)
+
+* **Current selected hour-এর Dynamic (UI তে দেখানো)**
+  [
+  \text{dynamicTargetThisHour} = \text{round}\big(\text{Base} + \text{Shortfall}(h-1)\big)
+  ]
+
+# 5) Δ Var (hour vs dynamic) — প্রতি ঘন্টার পার্থক্য
+
+[
+\Delta \text{Var}(h) = \text{Achieved}(h) - \text{Dynamic}(h)
+]
+
+> পজিটিভ → টার্গেটের চেয়ে বেশি। নেগেটিভ → shortfall।
+
+(কোডে `perHourVarDynamic` নামেই রাখা হয়েছে; গণনার সময় **Achieved** ও **Dynamic**—দুটোই রাউন্ড করা মান ব্যবহার হয়।)
+
+# 6) Net Var vs Base (to date) — বেস টার্গেটের বিপরীতে মোট অবস্থান
+
+প্রথম ঘন্টা থেকে বর্তমান ঘন্টা পর্যন্ত **মোট আউটপুট (রাউন্ডেড achieved)** থেকে **বেস × ঘন্টার সংখ্যা** বাদ।
+
+[
+\text{NetVarBase}(h) = \sum_{i=1}^{h} \text{Achieved}(i) - \text{Base} \times h
+]
+
+(কোডে `runningAchieved` দিয়ে cumulative যোগ হয়, তারপর `netVarVsBaseToDate` হিসাব হয়; UI-তে `netVarVsBaseToDateSelected` দেখায়।)
+
+# 7) Efficiency গুলো (UI-র “Live Data” অংশে)
+
+* **Hourly Efficiency %**
+  [
+  \text{HourlyEff} =
+  \begin{cases}
+  \dfrac{\text{AchievedThisHour} \times \text{SMV} \times 100}{\text{Manpower} \times 60} & \text{(valid হলে)}[6pt]
+  0 & \text{(নইলে)}
+  \end{cases}
+  ]
+
+* **Achieve Efficiency** (কোডে রানিং কনটেক্সটে ইউজ করা হয়েছে)
+  [
+  \text{AchieveEff} =
+  \begin{cases}
+  \dfrac{\text{AchievedThisHour} \times \text{SMV} \times \text{SelectedHour}}{\text{Manpower} \times 60} & \text{(valid হলে)}[6pt]
+  0 & \text{(নইলে)}
+  \end{cases}
+  ]
+
+> নোট: Efficiency অংশে AchievedThisHour (রাউন্ড করা) ব্যবহার হয়েছে।
+
+# 8) টেবিলের প্রতিটি রোতে কি দেখাচ্ছে
+
+প্রতিটি posted রেকর্ড সাজিয়ে (`recordsDecorated`) এই ফিল্ডগুলো রাখা হয়:
+
+* **_dynTargetRounded** = `Base + prevShortfall` → রাউন্ডেড Dynamic
+* **_achievedRounded** = ওই ঘন্টার Achieved (রাউন্ডেড)
+* **_perHourVarDynamic** = `_achievedRounded − _dynTargetRounded` (Δ Var)
+* **_shortfallThisHour** = `max(0, _dynTargetRounded − _achievedRounded)` → পরের ঘন্টার add-on
+* **_netVarVsBaseToDate** = cumulative achieved − (Base × hourNum)
+
+# 9) কেন 3য় ঘন্টার টার্গেট 124 হলো (উদাহরণ)
+
+ধরি Base = **115**
+
+* **H1:** Dynamic = 115, Achieved = 111 → Δ = −4 → Shortfall(1)=4
+* **H2:** Dynamic = 115 + 4 = 119, Achieved = 110 → Δ = −9 → Shortfall(2)=9
+* **H3:** Dynamic = 115 + 9 = **124** ✅ (আগের ঘন্টার shortfall-টাই শুধু যোগ হয়)
+
+# 10) রাউন্ডিং পলিসি (কোডে যেভাবে আছে)
+
+* **Base Target / hr** → `Math.round(...)` (UI-ও integer দেখায়)
+* **Achieved input** → সেভ করার আগেই `Math.round(...)`
+* **Dynamic target (UI)** → `Math.round(Base + prevShortfall)`
+* টেবিলের Target/ Achieved/ Δ Var/ Net Var — সব integer-ফর্ম্যাটে দেখানো
+
+---
+
+চাইলে একই লজিক API-তেও (POST time) `dynamicTarget` হিসেবে পাঠানো হচ্ছে:
+`dynamicTarget = baseTargetPerHour + previousHourShortfall` (রাউন্ড করে UI-তে দেখাও, সেভের সময়েও পাঠানো আছে)।
+এতে UI, হিসাব আর DB—সব জায়গায় একই রুল বজায় থাকে।
