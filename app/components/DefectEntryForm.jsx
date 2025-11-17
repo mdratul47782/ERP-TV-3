@@ -89,7 +89,6 @@ const defectOptions = [
 ];
 
 function toLocalDateLabel(d = new Date()) {
-  // Human-friendly title: e.g., "Mon, Nov 10, 2025"
   return d.toLocaleDateString(undefined, {
     weekday: "short",
     month: "short",
@@ -98,17 +97,15 @@ function toLocalDateLabel(d = new Date()) {
   });
 }
 
-// We pass a full ISO timestamp to the API (safer with your startOfDay handler)
 function todayIsoForApi() {
   return new Date().toISOString();
 }
 
 function getUserIdFromAuth(auth) {
-  // Be flexible with shapes:
   return auth?.user?.id || auth?.user?._id || auth?.id || auth?._id || null;
 }
 
-// --- Searchable dropdown for defects (no deps) ---
+// --- Searchable dropdown for defects ---
 function SearchableDefectPicker({
   options,
   onSelect,
@@ -129,9 +126,9 @@ function SearchableDefectPicker({
   }, [query, open]);
 
   const selectValue = (val) => {
-    onSelect(val); // <-- your existing handler
-    setQuery(""); // clear input
-    setOpen(false); // close list
+    onSelect(val);
+    setQuery("");
+    setOpen(false);
   };
 
   return (
@@ -140,7 +137,7 @@ function SearchableDefectPicker({
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         onFocus={() => setOpen(true)}
-        onBlur={() => setTimeout(() => setOpen(false), 120)} // allow click
+        onBlur={() => setTimeout(() => setOpen(false), 120)}
         onKeyDown={(e) => {
           if (!open && (e.key === "ArrowDown" || e.key === "Enter"))
             setOpen(true);
@@ -175,7 +172,7 @@ function SearchableDefectPicker({
               <button
                 type="button"
                 key={opt}
-                onMouseDown={(e) => e.preventDefault()} // keep focus for blur delay
+                onMouseDown={(e) => e.preventDefault()}
                 onClick={() => selectValue(opt)}
                 className={`block w-full text-left px-2 py-1.5 text-sm ${
                   idx === hi
@@ -198,7 +195,7 @@ function SearchableDefectPicker({
 export default function EndlineDashboard() {
   const { auth } = useAuth();
 
-  // ---- single form state (no “add another hour”) ----
+  // ---- form state ----
   const [form, setForm] = useState({
     hour: "",
     selectedDefects: [],
@@ -208,16 +205,19 @@ export default function EndlineDashboard() {
     afterRepair: "",
   });
 
-  // ---- right panel (today’s rows for current user) ----
+  // ---- edit mode ----
+  const [editingId, setEditingId] = useState(null);
+
+  // ---- right panel ----
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(null);
   const [error, setError] = useState("");
 
-  // ---- toast / alert state ----
-  const [toast, setToast] = useState(null); // { type: 'success' | 'error' | 'info', message: string }
+  // ---- toast ----
+  const [toast, setToast] = useState(null);
 
-  // auto-hide toast
   useEffect(() => {
     if (!toast) return;
     const t = setTimeout(() => setToast(null), 4000);
@@ -249,12 +249,10 @@ export default function EndlineDashboard() {
       if (!res.ok) throw new Error(json?.message || "Failed to load data");
 
       let data = json?.data || [];
-      // Fallback: if userId not available, filter by user_name
       if (!userId && userName) {
         data = data.filter((r) => r?.user?.user_name === userName);
       }
 
-      // sort by hourIndex asc
       data.sort((a, b) => (a.hourIndex || 0) - (b.hourIndex || 0));
       setRows(data);
     } catch (e) {
@@ -266,7 +264,7 @@ export default function EndlineDashboard() {
   };
 
   useEffect(() => {
-    if (!auth) return; // wait for auth to resolve
+    if (!auth) return;
     fetchToday();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auth]);
@@ -305,7 +303,7 @@ export default function EndlineDashboard() {
     });
   };
 
-  const resetForm = () =>
+  const resetForm = () => {
     setForm({
       hour: "",
       selectedDefects: [],
@@ -314,6 +312,51 @@ export default function EndlineDashboard() {
       defectivePcs: "",
       afterRepair: "",
     });
+    setEditingId(null);
+  };
+
+  // ---- Edit handler ----
+  const handleEdit = (row) => {
+    setEditingId(row._id);
+    setForm({
+      hour: row.hourLabel,
+      selectedDefects: (row.selectedDefects || []).map(d => ({
+        name: d.name,
+        quantity: String(d.quantity || "")
+      })),
+      inspectedQty: String(row.inspectedQty || ""),
+      passedQty: String(row.passedQty || ""),
+      defectivePcs: String(row.defectivePcs || ""),
+      afterRepair: String(row.afterRepair || ""),
+    });
+    showToast(`Editing ${row.hourLabel}`, "info");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  // ---- Delete handler ----
+  const handleDelete = async (id) => {
+    if (!confirm("Are you sure you want to delete this entry?")) return;
+    
+    setDeleting(id);
+    try {
+      const res = await fetch(`/api/hourly-inspections?id=${id}`, {
+        method: "DELETE",
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.message || "Failed to delete");
+
+      await fetchToday();
+      showToast("Entry deleted successfully", "success");
+      
+      if (editingId === id) {
+        resetForm();
+      }
+    } catch (e) {
+      showToast(e.message || "Delete failed", "error");
+    } finally {
+      setDeleting(null);
+    }
+  };
 
   // ---- validation ----
   const validate = () => {
@@ -321,55 +364,65 @@ export default function EndlineDashboard() {
     return "";
   };
 
-  // ---- POST ----
-  const buildEntryPayload = () => ({
-    hour: form.hour,
-    inspectedQty: Number(form.inspectedQty || 0),
-    passedQty: Number(form.passedQty || 0),
-    defectivePcs: Number(form.defectivePcs || 0),
-    afterRepair: Number(form.afterRepair || 0),
-    selectedDefects: (form.selectedDefects || []).map((d) => ({
-      name: d.name,
-      quantity: Number(d.quantity || 0),
-    })),
-    // optionally: lineInfo: { buyer, building, floor, line, registerId }
-  });
-
+  // ---- Save (Create or Update) ----
   const save = async () => {
     const msg = validate();
     if (msg) {
-      // was: alert(`❌ Validation Error\n\n${msg}`);
       showToast(msg, "error");
       return;
     }
     if (!userId && !userName) {
-      // was: alert("❌ Missing user identity (auth).");
       showToast("Missing user identity (auth).", "error");
       return;
     }
 
     try {
       setSaving(true);
-      const res = await fetch("/api/hourly-inspections", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userId: userId, // preferred (server-side filter friendly)
-          userName: userName, // label stored in row.user
-          entries: [buildEntryPayload()], // single entry
-          reportDate: new Date().toISOString(), // ensure today's bucket
-        }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.message || "Failed to save");
+      
+      const payload = {
+        hour: form.hour,
+        inspectedQty: Number(form.inspectedQty || 0),
+        passedQty: Number(form.passedQty || 0),
+        defectivePcs: Number(form.defectivePcs || 0),
+        afterRepair: Number(form.afterRepair || 0),
+        selectedDefects: (form.selectedDefects || []).map((d) => ({
+          name: d.name,
+          quantity: Number(d.quantity || 0),
+        })),
+      };
 
-      // refresh right panel
+      if (editingId) {
+        // Update existing entry
+        const res = await fetch(`/api/hourly-inspections?id=${editingId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json?.message || "Failed to update");
+
+        showToast("Entry updated successfully!", "success");
+      } else {
+        // Create new entry
+        const res = await fetch("/api/hourly-inspections", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userId: userId,
+            userName: userName,
+            entries: [payload],
+            reportDate: new Date().toISOString(),
+          }),
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json?.message || "Failed to save");
+
+        showToast("Entry created successfully!", "success");
+      }
+
       await fetchToday();
       resetForm();
-      // was: alert("✅ Saved!");
-      showToast("Saved successfully!", "success");
     } catch (e) {
-      // was: alert(`❌ Save failed: ${e.message}`);
       showToast(e.message || "Save failed", "error");
     } finally {
       setSaving(false);
@@ -414,10 +467,9 @@ export default function EndlineDashboard() {
     info: "ℹ️",
   };
 
-  // ---- UI ----
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Toast / Alert */}
+      {/* Toast */}
       {toast && (
         <div className="fixed right-4 top-4 z-50">
           <div
@@ -440,8 +492,8 @@ export default function EndlineDashboard() {
         </div>
       )}
 
-      <div className="mx-auto max-w-7xl p-4 md:p-6 ">
-        <div className="mb-4 flex items-center justify-between gap-3  ">
+      <div className="mx-auto max-w-7xl p-4 md:p-6">
+        <div className="mb-4 flex items-center justify-between gap-3">
           <div>
             <h1 className="text-xl font-bold">
               Endline Hourly Dashboard —{" "}
@@ -465,13 +517,23 @@ export default function EndlineDashboard() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 ">
-          {/* LEFT: fixed single form */}
-          <div className="md:sticky md:top-4 md:h-fit ">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          {/* LEFT: Form */}
+          <div className="md:sticky md:top-4 md:h-fit">
             <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-              <h2 className="mb-3 text-sm font-semibold text-gray-700">
-                Add/Update Hour
-              </h2>
+              <div className="mb-3 flex items-center justify-between">
+                <h2 className="text-sm font-semibold text-gray-700">
+                  {editingId ? "Edit Hour Entry" : "Add New Hour Entry"}
+                </h2>
+                {editingId && (
+                  <button
+                    onClick={resetForm}
+                    className="text-xs text-gray-500 hover:text-gray-700 underline"
+                  >
+                    Cancel Edit
+                  </button>
+                )}
+              </div>
 
               <div className="mb-3">
                 <label className="mb-1 block text-xs font-medium text-gray-700">
@@ -495,12 +557,9 @@ export default function EndlineDashboard() {
                 <label className="mb-1 block text-xs font-medium text-gray-700">
                   Add Defect
                 </label>
-
                 <SearchableDefectPicker
                   options={defectOptions}
-                  onSelect={(val) => {
-                    handleSelectDefect(val); // unchanged functionality
-                  }}
+                  onSelect={handleSelectDefect}
                 />
               </div>
 
@@ -593,7 +652,7 @@ export default function EndlineDashboard() {
                   disabled={saving}
                   className="rounded-md bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50"
                 >
-                  {saving ? "Saving..." : "Save"}
+                  {saving ? "Saving..." : editingId ? "Update" : "Save"}
                 </button>
                 <button
                   type="button"
@@ -606,7 +665,7 @@ export default function EndlineDashboard() {
             </div>
           </div>
 
-          {/* RIGHT: today's entries */}
+          {/* RIGHT: Entries */}
           <div>
             <div className="mb-3 grid grid-cols-2 gap-3 md:grid-cols-4">
               <div className="rounded-lg border border-gray-200 bg-white p-3 text-center">
@@ -634,7 +693,7 @@ export default function EndlineDashboard() {
             <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
               <div className="mb-3 flex items-center justify-between">
                 <h2 className="text-sm font-semibold text-gray-700">
-                  Today’s Entries ({rows.length})
+                  Today's Entries ({rows.length})
                 </h2>
                 {loading && (
                   <span className="text-xs text-gray-500">Loading...</span>
@@ -650,16 +709,37 @@ export default function EndlineDashboard() {
                   {rows.map((r) => (
                     <li
                       key={r._id}
-                      className="rounded border border-gray-200 p-3 hover:bg-gray-50"
+                      className={`rounded border p-3 ${
+                        editingId === r._id
+                          ? "border-indigo-300 bg-indigo-50"
+                          : "border-gray-200 hover:bg-gray-50"
+                      }`}
                     >
                       <div className="mb-1 flex items-center justify-between">
                         <div className="text-sm font-semibold text-gray-800">
                           {r.hourLabel}
                         </div>
-                        <div className="text-xs text-gray-500">
-                          {new Date(
-                            r.updatedAt || r.createdAt
-                          ).toLocaleTimeString()}
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-gray-500">
+                            {new Date(
+                              r.updatedAt || r.createdAt
+                            ).toLocaleTimeString()}
+                          </span>
+                          <button
+                            onClick={() => handleEdit(r)}
+                            className="rounded bg-blue-100 px-2 py-0.5 text-xs text-blue-700 hover:bg-blue-200"
+                            title="Edit"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => handleDelete(r._id)}
+                            disabled={deleting === r._id}
+                            className="rounded bg-red-100 px-2 py-0.5 text-xs text-red-700 hover:bg-red-200 disabled:opacity-50"
+                            title="Delete"
+                          >
+                            {deleting === r._id ? "..." : "Delete"}
+                          </button>
                         </div>
                       </div>
                       <div className="grid grid-cols-2 gap-2 text-xs text-gray-700 md:grid-cols-5">

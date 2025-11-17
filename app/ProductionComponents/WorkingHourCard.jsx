@@ -212,7 +212,8 @@ export default function WorkingHourCard({ header: initialHeader }) {
     (sum, rec) => sum + (rec._achievedRounded ?? 0),
     0
   );
-  const baselineToDatePrevForSelected = baseTargetPerHour * (selectedHourInt - 1);
+  const baselineToDatePrevForSelected =
+    baseTargetPerHour * (selectedHourInt - 1);
   const cumulativeShortfallVsBasePrevForSelected = Math.max(
     0,
     baselineToDatePrevForSelected - achievedToDatePrev
@@ -227,7 +228,9 @@ export default function WorkingHourCard({ header: initialHeader }) {
     previousDecorated.length > 0
       ? previousDecorated[previousDecorated.length - 1]
       : null;
-  const previousVariance = previousRecord ? previousRecord._perHourVarDynamic : 0;
+  const previousVariance = previousRecord
+    ? previousRecord._perHourVarDynamic
+    : 0;
 
   // 🔹 Informational: cumulative Δ vs dynamic (previous rows) — not used for target
   const cumulativeVarianceDynamicPrev = previousDecorated.reduce(
@@ -265,7 +268,8 @@ export default function WorkingHourCard({ header: initialHeader }) {
   if (!ProductionAuth) {
     return (
       <div className="rounded-2xl border border-yellow-300 bg-yellow-50 shadow-sm p-4 text-xs">
-        No production user logged in. Please sign in to see working hour details.
+        No production user logged in. Please sign in to see working hour
+        details.
       </div>
     );
   }
@@ -285,10 +289,12 @@ export default function WorkingHourCard({ header: initialHeader }) {
           Header does not belong to the logged-in production user.
         </div>
         <div className="text-slate-700">
-          <span className="font-medium">Header production user:</span> {headerProdName || "N/A"}
+          <span className="font-medium">Header production user:</span>{" "}
+          {headerProdName || "N/A"}
         </div>
         <div className="text-slate-700">
-          <span className="font-medium">Logged-in production user:</span> {authProdName || "N/A"}
+          <span className="font-medium">Logged-in production user:</span>{" "}
+          {authProdName || "N/A"}
         </div>
       </div>
     );
@@ -311,7 +317,7 @@ export default function WorkingHourCard({ header: initialHeader }) {
       const payload = {
         headerId: h._id,
         hour: Number(selectedHour),
-        achievedQty: achievedThisHour,        // 🔹 rounded
+        achievedQty: achievedThisHour, // 🔹 rounded
         dynamicTarget: dynamicTargetThisHour, // 🔹 base + cumulative shortfall vs base
         productionUser: {
           id: ProductionAuth.id,
@@ -341,7 +347,9 @@ export default function WorkingHourCard({ header: initialHeader }) {
         headerId: h._id,
         productionUserId: ProductionAuth.id,
       });
-      const resList = await fetch(`/api/hourly-productions?${params.toString()}`);
+      const resList = await fetch(
+        `/api/hourly-productions?${params.toString()}`
+      );
       const jsonList = await resList.json();
       if (resList.ok && jsonList.success) {
         const records = jsonList.data || [];
@@ -365,11 +373,15 @@ export default function WorkingHourCard({ header: initialHeader }) {
   };
 
   const handleEdit = () => {
-    console.log("Edit clicked – wire this to PATCH /api/hourly-productions/:id");
+    console.log(
+      "Edit clicked – wire this to PATCH /api/hourly-productions/:id"
+    );
   };
 
   const handleDelete = () => {
-    console.log("Delete clicked – you can call DELETE /api/hourly-productions/:id");
+    console.log(
+      "Delete clicked – you can call DELETE /api/hourly-productions/:id"
+    );
   };
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -379,13 +391,17 @@ export default function WorkingHourCard({ header: initialHeader }) {
     <div className="rounded-2xl border border-gray-300 bg-white shadow-sm p-4 space-y-3">
       {/* Header */}
       <div className="border-b pb-2 flex items-center justify-between text-xs">
-        <div className="font-semibold tracking-wide uppercase">Working Hour</div>
+        <div className="font-semibold tracking-wide uppercase">
+          Working Hour
+        </div>
         <div className="text-[11px] text-slate-600 space-y-0.5 text-right">
           <div>
-            <span className="font-medium">Production User:</span> {h?.productionUser?.Production_user_name ?? ""}
+            <span className="font-medium">Production User:</span>{" "}
+            {h?.productionUser?.Production_user_name ?? ""}
           </div>
           <div>
-            <span className="font-medium">Planned Working Hours:</span> {totalWorkingHours}
+            <span className="font-medium">Planned Working Hours:</span>{" "}
+            {totalWorkingHours}
           </div>
         </div>
       </div>
@@ -436,21 +452,27 @@ export default function WorkingHourCard({ header: initialHeader }) {
           </div>
 
           <div>
-            <span className="font-medium text-slate-600">Base Target / Hour:</span>{" "}
+            <span className="font-medium text-slate-600">
+              Base Target / Hour:
+            </span>{" "}
             <span className="font-semibold text-slate-900">
               {formatNumber(baseTargetPerHour, 0)}
             </span>
           </div>
 
           <div>
-            <span className="font-medium text-slate-600">Carry (shortfall vs base up to previous hour):</span>{" "}
+            <span className="font-medium text-slate-600">
+              Carry (shortfall vs base up to previous hour):
+            </span>{" "}
             <span className="font-semibold text-amber-700">
               {formatNumber(cumulativeShortfallVsBasePrevForSelected, 0)}
             </span>
           </div>
 
           <div className="col-span-2">
-            <span className="font-medium text-slate-600">Dynamic target this hour:</span>{" "}
+            <span className="font-medium text-slate-600">
+              Dynamic target this hour:
+            </span>{" "}
             <span className="font-semibold text-blue-700">
               {formatNumber(dynamicTargetThisHour, 0)}
             </span>
@@ -522,7 +544,9 @@ export default function WorkingHourCard({ header: initialHeader }) {
             <tr className="bg-gray-100">
               <th className="px-2 py-2 text-left">Hour</th>
               <th className="px-2 py-2 text-left">Base Target / hr</th>
-              <th className="px-2 py-2 text-left">Dynamic Target (this hour)</th>
+              <th className="px-2 py-2 text-left">
+                Dynamic Target (this hour)
+              </th>
               <th className="px-2 py-2 text-left">Achieved Qty (this hour)</th>
               <th className="px-2 py-2 text-left">Hourly Efficiency %</th>
               <th className="px-2 py-2 text-left">Achieve Efficiency</th>
@@ -651,8 +675,12 @@ export default function WorkingHourCard({ header: initialHeader }) {
                   <th className="px-2 py-1 text-left">Hour</th>
                   <th className="px-2 py-1 text-left">Target</th>
                   <th className="px-2 py-1 text-left">Achieved</th>
-                  <th className="px-2 py-1 text-left">Δ Var (hour vs dynamic)</th>
-                  <th className="px-2 py-1 text-left">Net Var vs Base (to date)</th>
+                  <th className="px-2 py-1 text-left">
+                    Δ Var (hour vs dynamic)
+                  </th>
+                  <th className="px-2 py-1 text-left">
+                    Net Var vs Base (to date)
+                  </th>
                   <th className="px-2 py-1 text-left">Hourly Eff %</th>
                   <th className="px-2 py-1 text-left">Achieve Eff</th>
                   <th className="px-2 py-1 text-left">Total Eff %</th>
