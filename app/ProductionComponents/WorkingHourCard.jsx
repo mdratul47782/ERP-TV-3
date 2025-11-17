@@ -388,7 +388,7 @@ export default function WorkingHourCard({ header: initialHeader }) {
   // 🔹 UI
   // ─────────────────────────────────────────────────────────────────────────────
   return (
-    <div className="rounded-2xl border border-gray-300 bg-white shadow-sm p-4 space-y-3">
+    <div className="rounded-2xl border border-gray-300 bg-white shadow-sm p-3 space-y-3 w-6xs">
       {/* Header */}
       <div className="border-b pb-2 flex items-center justify-between text-xs">
         <div className="font-semibold tracking-wide uppercase">
