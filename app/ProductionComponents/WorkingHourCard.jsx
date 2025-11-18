@@ -17,10 +17,21 @@ function toNum(v, fallback = 0) {
 }
 
 export default function WorkingHourCard({ header: initialHeader }) {
-  // 🔹 Normalize header: allow array or single object
-  const [header, setHeader] = useState(
-    Array.isArray(initialHeader) ? initialHeader[0] : initialHeader || null
-  );
+  // 🔹 Normalize initial header (server-provided) – array or single object
+  const initialHeaderNormalized = Array.isArray(initialHeader)
+    ? initialHeader[0]
+    : initialHeader || null;
+
+  // 🔹 Selected date: prefer header.productionDate, else today
+  const [selectedDate, setSelectedDate] = useState(() => {
+    if (initialHeaderNormalized?.productionDate) {
+      // e.g. "2025-11-18" or full ISO string
+      return initialHeaderNormalized.productionDate.slice(0, 10);
+    }
+    return new Date().toISOString().slice(0, 10);
+  });
+
+  const [header, setHeader] = useState(initialHeaderNormalized);
   const h = header;
 
   const { ProductionAuth, loading: productionLoading } = useProductionAuth();
@@ -33,17 +44,23 @@ export default function WorkingHourCard({ header: initialHeader }) {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [latestDynamicFromServer, setLatestDynamicFromServer] = useState(null);
+  const [headerLoading, setHeaderLoading] = useState(false);
 
-  // 🔹 Auto-refresh header data every 3s
+  // ─────────────────────────────────────────────────────────────────────────────
+  // 🔹 Auto-refresh header data for selected date every 3s (per production user)
+  // ─────────────────────────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!ProductionAuth?.id) return;
+    if (!ProductionAuth?.id || !selectedDate) return;
+
+    let cancelled = false;
 
     const fetchHeaderData = async () => {
       try {
-        const todayDate = new Intl.DateTimeFormat("en-CA").format(new Date());
+        setHeaderLoading(true);
+
         const params = new URLSearchParams({
           productionUserId: ProductionAuth.id,
-          date: todayDate,
+          date: selectedDate, // 🔹 key: use selected date, not always today
         });
 
         const res = await fetch(
@@ -52,25 +69,45 @@ export default function WorkingHourCard({ header: initialHeader }) {
         );
         const json = await res.json();
 
+        if (cancelled) return;
+
         if (res.ok && json.success && json.data) {
-          setHeader(json.data);
+          // 🔹 API may return array of headers (like your example), pick the first
+          const data = Array.isArray(json.data) ? json.data[0] : json.data;
+          setHeader(data || null);
         } else {
           setHeader(null);
         }
       } catch (err) {
+        if (cancelled) return;
         console.error("Failed to refresh header data:", err);
+        setHeader(null);
+      } finally {
+        if (!cancelled) setHeaderLoading(false);
       }
     };
 
     fetchHeaderData();
     const intervalId = setInterval(fetchHeaderData, 3000);
-    return () => clearInterval(intervalId);
-  }, [ProductionAuth?.id]);
 
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+    };
+  }, [ProductionAuth?.id, selectedDate]);
+
+  // ─────────────────────────────────────────────────────────────────────────────
   // 🔹 Load existing hourly records for this header + production user
+  // ─────────────────────────────────────────────────────────────────────────────
   useEffect(() => {
     const fetchRecords = async () => {
-      if (!h?._id || !ProductionAuth?.id) return;
+      if (!h?._id || !ProductionAuth?.id) {
+        // 🔹 No header for this date: clear previous records
+        setHourlyRecords([]);
+        setLatestDynamicFromServer(null);
+        return;
+      }
+
       try {
         setLoadingRecords(true);
         setError("");
@@ -81,7 +118,9 @@ export default function WorkingHourCard({ header: initialHeader }) {
           productionUserId: ProductionAuth.id,
         });
 
-        const res = await fetch(`/api/hourly-productions?${params.toString()}`);
+        const res = await fetch(
+          `/api/hourly-productions?${params.toString()}`
+        );
         const json = await res.json();
 
         if (!res.ok || !json.success) {
@@ -274,15 +313,7 @@ export default function WorkingHourCard({ header: initialHeader }) {
     );
   }
 
-  if (!h) {
-    return (
-      <div className="rounded-2xl border border-gray-300 bg-white shadow-sm p-4 text-xs">
-        No production header found. Please save a header first.
-      </div>
-    );
-  }
-
-  if (!isMatched) {
+  if (h && !isMatched) {
     return (
       <div className="rounded-2xl border border-rose-300 bg-rose-50 shadow-sm p-4 text-xs space-y-1.5">
         <div className="font-semibold text-rose-700">
@@ -309,7 +340,7 @@ export default function WorkingHourCard({ header: initialHeader }) {
       setError("");
       setMessage("");
 
-      if (!h._id) throw new Error("Missing headerId");
+      if (!h?._id) throw new Error("Missing headerId for this date");
       if (!Number.isFinite(achievedThisHour) || achievedThisHour < 0) {
         throw new Error("Please enter a valid achieved qty for this hour");
       }
@@ -389,26 +420,55 @@ export default function WorkingHourCard({ header: initialHeader }) {
   // ─────────────────────────────────────────────────────────────────────────────
   return (
     <div className="rounded-2xl border border-gray-300 bg-white shadow-sm p-3 space-y-3 w-7x1">
-      {/* Header */}
-      <div className="border-b pb-2 flex items-center justify-between text-xs">
+      {/* Header with date selector */}
+      <div className="border-b pb-2 flex items-center justify-between text-xs gap-2">
         <div className="font-semibold tracking-wide uppercase">
           Working Hour
         </div>
         <div className="text-[11px] text-slate-600 space-y-0.5 text-right">
-          <div>
-            <span className="font-medium">Production User:</span>{" "}
-            {h?.productionUser?.Production_user_name ?? ""}
+          {/* 🔹 Date-wise filter */}
+          <div className="flex items-center justify-end gap-1">
+            <span className="font-medium">Date:</span>
+            <input
+              type="date"
+              className="rounded border px-2 py-0.5 text-[11px]"
+              value={selectedDate}
+              onChange={(e) => {
+                const value = e.target.value;
+                setSelectedDate(value);
+                setSelectedHour(1);
+                setAchievedInput("");
+                setMessage("");
+                setError("");
+                setHourlyRecords([]);
+                setLatestDynamicFromServer(null);
+              }}
+            />
           </div>
-          <div>
-            <span className="font-medium">Planned Working Hours:</span>{" "}
-            {totalWorkingHours}
-          </div>
+
+          {h && (
+            <>
+              <div>
+                <span className="font-medium">Production User:</span>{" "}
+                {h?.productionUser?.Production_user_name ?? ""}
+              </div>
+              <div>
+                <span className="font-medium">Planned Working Hours:</span>{" "}
+                {totalWorkingHours}
+              </div>
+            </>
+          )}
         </div>
       </div>
 
       {/* Messages */}
-      {(error || message) && (
-        <div className="text-[11px]">
+      {(headerLoading || error || message) && (
+        <div className="text-[11px] space-y-1">
+          {headerLoading && (
+            <div className="rounded border border-slate-200 bg-slate-50 px-2 py-1 text-slate-700">
+              Loading header for {selectedDate}...
+            </div>
+          )}
           {error && (
             <div className="mb-1 rounded border border-red-200 bg-red-50 px-2 py-1 text-red-700">
               {error}
@@ -422,318 +482,345 @@ export default function WorkingHourCard({ header: initialHeader }) {
         </div>
       )}
 
-      {/* Live summary */}
-      <div className="text-[11px] text-slate-700 bg-slate-50 rounded-lg p-3 space-y-1.5 border border-slate-200">
-        <div className="flex justify-between items-center pb-1 border-b border-slate-300">
-          <span className="font-semibold text-slate-800">Live Data</span>
+      {/* If no header for this date */}
+      {!h && !headerLoading && (
+        <div className="text-[11px] text-amber-800 bg-amber-50 rounded-lg p-3 border border-amber-200">
+          No production header found for {selectedDate}. Please create/save a
+          header first for this date.
         </div>
-        <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-          <div>
-            <span className="font-medium text-slate-600">
-              Present Manpower:
-            </span>{" "}
-            <span className="font-semibold text-slate-900">
-              {manpowerPresent}
-            </span>
-          </div>
-          <div>
-            <span className="font-medium text-slate-600">SMV:</span>{" "}
-            <span className="font-semibold text-slate-900">{smv}</span>
-          </div>
-          <div>
-            <span className="font-medium text-slate-600">Plan Efficiency:</span>{" "}
-            <span className="font-semibold text-slate-900">
-              {planEfficiencyPercent}%
-            </span>
-          </div>
-          <div>
-            <span className="font-medium text-slate-600">Day Target:</span>{" "}
-            <span className="font-semibold text-slate-900">{todayTarget}</span>
-          </div>
+      )}
 
-          <div>
-            <span className="font-medium text-slate-600">
-              Base Target / Hour:
-            </span>{" "}
-            <span className="font-semibold text-slate-900">
-              {formatNumber(baseTargetPerHour, 0)}
-            </span>
-          </div>
+      {/* Only show metrics + inputs when header exists */}
+      {h && (
+        <>
+          {/* Live summary */}
+          <div className="text-[11px] text-slate-700 bg-slate-50 rounded-lg p-3 space-y-1.5 border border-slate-200">
+            <div className="flex justify-between items-center pb-1 border-b border-slate-300">
+              <span className="font-semibold text-slate-800">Live Data</span>
+            </div>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+              <div>
+                <span className="font-medium text-slate-600">
+                  Present Manpower:
+                </span>{" "}
+                <span className="font-semibold text-slate-900">
+                  {manpowerPresent}
+                </span>
+              </div>
+              <div>
+                <span className="font-medium text-slate-600">SMV:</span>{" "}
+                <span className="font-semibold text-slate-900">{smv}</span>
+              </div>
+              <div>
+                <span className="font-medium text-slate-600">
+                  Plan Efficiency:
+                </span>{" "}
+                <span className="font-semibold text-slate-900">
+                  {planEfficiencyPercent}%
+                </span>
+              </div>
+              <div>
+                <span className="font-medium text-slate-600">
+                  Day Target:
+                </span>{" "}
+                <span className="font-semibold text-slate-900">
+                  {todayTarget}
+                </span>
+              </div>
 
-          <div>
-            <span className="font-medium text-slate-600">
-              Carry (shortfall vs base up to previous hour):
-            </span>{" "}
-            <span className="font-semibold text-amber-700">
-              {formatNumber(cumulativeShortfallVsBasePrevForSelected, 0)}
-            </span>
-          </div>
-
-          <div className="col-span-2">
-            <span className="font-medium text-slate-600">
-              Dynamic target this hour:
-            </span>{" "}
-            <span className="font-semibold text-blue-700">
-              {formatNumber(dynamicTargetThisHour, 0)}
-            </span>
-          </div>
-
-          {/* Net variance vs base (to date) */}
-          <div className="col-span-2">
-            <span className="font-medium text-slate-600">
-              Net variance vs base (to date):
-            </span>{" "}
-            <span
-              className={`font-semibold ${
-                netVarVsBaseToDateSelected >= 0
-                  ? "text-green-700"
-                  : "text-red-700"
-              }`}
-            >
-              {formatNumber(netVarVsBaseToDateSelected, 0)}
-            </span>
-          </div>
-
-          {/* Cumulative variance vs dynamic (previous hours) */}
-          <div className="col-span-2">
-            <span className="font-medium text-slate-600">
-              Cumulative variance (prev vs dynamic):
-            </span>{" "}
-            <span
-              className={`font-semibold ${
-                cumulativeVarianceDynamicPrev >= 0
-                  ? "text-green-700"
-                  : "text-red-700"
-              }`}
-            >
-              {formatNumber(cumulativeVarianceDynamicPrev, 0)}
-            </span>
-          </div>
-        </div>
-
-        {latestDynamicFromServer !== null && (
-          <div className="pt-1 border-t border-slate-200">
-            <span className="font-medium text-slate-600">
-              Last Saved Dynamic Target (server):
-            </span>{" "}
-            <span className="font-semibold text-slate-900">
-              {formatNumber(latestDynamicFromServer, 0)}
-            </span>
-          </div>
-        )}
-        {previousRecord && (
-          <div>
-            <span className="font-medium text-slate-600">
-              Last hour variance (Δ vs dynamic):
-            </span>{" "}
-            <span
-              className={`font-semibold ${
-                previousVariance >= 0 ? "text-green-700" : "text-red-700"
-              }`}
-            >
-              {formatNumber(previousVariance, 0)}
-            </span>
-          </div>
-        )}
-      </div>
-
-      {/* Main input row */}
-      <div className="overflow-x-auto">
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="bg-gray-100">
-              <th className="px-2 py-2 text-left">Hour</th>
-              <th className="px-2 py-2 text-left">Base Target / hr</th>
-              <th className="px-2 py-2 text-left">
-                Dynamic Target (this hour)
-              </th>
-              <th className="px-2 py-2 text-left">Achieved Qty (this hour)</th>
-              <th className="px-2 py-2 text-left">Hourly Efficiency %</th>
-              <th className="px-2 py-2 text-left">Achieve Efficiency</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr className="border-b">
-              <td className="px-2 py-2 align-top">
-                <select
-                  className="w-full rounded border px-2 py-1 text-xs"
-                  value={selectedHour}
-                  onChange={(e) => setSelectedHour(Number(e.target.value))}
-                >
-                  {hours.map((hVal) => (
-                    <option key={hVal} value={hVal}>
-                      {hVal} hour{hVal > 1 ? "s" : ""}
-                    </option>
-                  ))}
-                </select>
-                <p className="mt-1 text-[10px] text-gray-500">
-                  Current hour (1 ~ {totalWorkingHours})
-                </p>
-              </td>
-
-              <td className="px-2 py-2 align-top">
-                <div className="rounded border bg-gray-50 px-2 py-1">
+              <div>
+                <span className="font-medium text-slate-600">
+                  Base Target / Hour:
+                </span>{" "}
+                <span className="font-semibold text-slate-900">
                   {formatNumber(baseTargetPerHour, 0)}
-                </div>
-                <p className="mt-1 text-[10px] text-gray-500 leading-tight">
-                  (Manpower × 60 × Plan % ÷ SMV)
-                </p>
-              </td>
+                </span>
+              </div>
 
-              <td className="px-2 py-2 align-top">
-                <div className="rounded border bg-amber-50 px-2 py-1">
+              <div>
+                <span className="font-medium text-slate-600">
+                  Carry (shortfall vs base up to previous hour):
+                </span>{" "}
+                <span className="font-semibold text-amber-700">
+                  {formatNumber(
+                    cumulativeShortfallVsBasePrevForSelected,
+                    0
+                  )}
+                </span>
+              </div>
+
+              <div className="col-span-2">
+                <span className="font-medium text-slate-600">
+                  Dynamic target this hour:
+                </span>{" "}
+                <span className="font-semibold text-blue-700">
                   {formatNumber(dynamicTargetThisHour, 0)}
-                </div>
-                <p className="mt-1 text-[10px] text-amber-700 leading-tight">
-                  Base + cumulative shortfall vs base
-                </p>
-              </td>
+                </span>
+              </div>
 
-              <td className="px-2 py-2 align-top">
-                <input
-                  type="number"
-                  min="0"
-                  step="1"
-                  className="w-full rounded border px-2 py-1 text-xs"
-                  value={achievedInput}
-                  onChange={(e) => setAchievedInput(e.target.value)}
-                  placeholder="Output this hour (integer)"
-                />
-                <p className="mt-1 text-[10px] text-gray-500">
-                  Actual pieces this hour
-                </p>
-              </td>
+              {/* Net variance vs base (to date) */}
+              <div className="col-span-2">
+                <span className="font-medium text-slate-600">
+                  Net variance vs base (to date):
+                </span>{" "}
+                <span
+                  className={`font-semibold ${
+                    netVarVsBaseToDateSelected >= 0
+                      ? "text-green-700"
+                      : "text-red-700"
+                  }`}
+                >
+                  {formatNumber(netVarVsBaseToDateSelected, 0)}
+                </span>
+              </div>
 
-              <td className="px-2 py-2 align-top">
-                <div className="rounded border bg-gray-50 px-2 py-1">
-                  {formatNumber(hourlyEfficiency)}
-                </div>
-                <p className="mt-1 text-[10px] text-gray-500 leading-tight">
-                  Output × SMV ÷ (Manpower × 60) × 100
-                </p>
-              </td>
+              {/* Cumulative variance vs dynamic (previous hours) */}
+              <div className="col-span-2">
+                <span className="font-medium text-slate-600">
+                  Cumulative variance (prev vs dynamic):
+                </span>{" "}
+                <span
+                  className={`font-semibold ${
+                    cumulativeVarianceDynamicPrev >= 0
+                      ? "text-green-700"
+                      : "text-red-700"
+                  }`}
+                >
+                  {formatNumber(cumulativeVarianceDynamicPrev, 0)}
+                </span>
+              </div>
+            </div>
 
-              <td className="px-2 py-2 align-top">
-                <div className="rounded border bg-gray-50 px-2 py-1">
-                  {formatNumber(achieveEfficiency)}
-                </div>
-                <p className="mt-1 text-[10px] text-gray-500 leading-tight">
-                  Hourly Output × SMV ÷ (Manpower × 60) × Working Hour
-                </p>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+            {latestDynamicFromServer !== null && (
+              <div className="pt-1 border-t border-slate-200">
+                <span className="font-medium text-slate-600">
+                  Last Saved Dynamic Target (server):
+                </span>{" "}
+                <span className="font-semibold text-slate-900">
+                  {formatNumber(latestDynamicFromServer, 0)}
+                </span>
+              </div>
+            )}
+            {previousRecord && (
+              <div>
+                <span className="font-medium text-slate-600">
+                  Last hour variance (Δ vs dynamic):
+                </span>{" "}
+                <span
+                  className={`font-semibold ${
+                    previousVariance >= 0
+                      ? "text-green-700"
+                      : "text-red-700"
+                  }`}
+                >
+                  {formatNumber(previousVariance, 0)}
+                </span>
+              </div>
+            )}
+          </div>
 
-      {/* Actions */}
-      <div className="flex items-center justify-end gap-2 text-xs">
-        <button
-          type="button"
-          onClick={handleSave}
-          className="rounded bg-gray-900 px-3 py-1 font-medium text-white hover:bg-gray-800 disabled:opacity-60"
-          disabled={saving}
-        >
-          {saving ? "Saving..." : "Save Hour"}
-        </button>
-        <button
-          type="button"
-          onClick={handleEdit}
-          className="rounded border border-gray-400 px-3 py-1 font-medium text-gray-700 hover:bg-gray-100"
-        >
-          Edit (wire later)
-        </button>
-        <button
-          type="button"
-          onClick={handleDelete}
-          className="rounded border border-red-400 px-3 py-1 font-medium text-red-600 hover:bg-red-50"
-        >
-          Delete (wire later)
-        </button>
-      </div>
-
-      {/* Posted hourly data */}
-      <div className="mt-3">
-        <div className="flex items-center justify-between text-xs mb-2">
-          <h3 className="font-semibold">Posted hourly records</h3>
-          {loadingRecords && (
-            <span className="text-[10px] text-slate-500">
-              Loading hourly records...
-            </span>
-          )}
-        </div>
-
-        {recordsDecorated.length === 0 ? (
-          <p className="text-[11px] text-slate-500">
-            No hourly records saved yet for this header.
-          </p>
-        ) : (
+          {/* Main input row */}
           <div className="overflow-x-auto">
-            <table className="w-full text-[11px] border-t">
+            <table className="w-full text-xs">
               <thead>
-                <tr className="bg-slate-50">
-                  <th className="px-2 py-1 text-left">Hour</th>
-                  <th className="px-2 py-1 text-left">Target</th>
-                  <th className="px-2 py-1 text-left">Achieved</th>
-                  <th className="px-2 py-1 text-left">
-                    Δ Var (hour vs dynamic)
+                <tr className="bg-gray-100">
+                  <th className="px-2 py-2 text-left">Hour</th>
+                  <th className="px-2 py-2 text-left">Base Target / hr</th>
+                  <th className="px-2 py-2 text-left">
+                    Dynamic Target (this hour)
                   </th>
-                  <th className="px-2 py-1 text-left">
-                    Net Var vs Base (to date)
+                  <th className="px-2 py-2 text-left">
+                    Achieved Qty (this hour)
                   </th>
-                  <th className="px-2 py-1 text-left">Hourly Eff %</th>
-                  <th className="px-2 py-1 text-left">Achieve Eff</th>
-                  <th className="px-2 py-1 text-left">Total Eff %</th>
-                  <th className="px-2 py-1 text-left">Updated At</th>
+                  <th className="px-2 py-2 text-left">Hourly Efficiency %</th>
+                  <th className="px-2 py-2 text-left">Achieve Efficiency</th>
                 </tr>
               </thead>
               <tbody>
-                {recordsDecorated.map((rec) => (
-                  <tr key={rec._id} className="border-b">
-                    <td className="px-2 py-1">{rec._hourNum}</td>
-                    <td className="px-2 py-1">
-                      {formatNumber(rec._dynTargetRounded, 0)}
-                    </td>
-                    <td className="px-2 py-1">{rec._achievedRounded}</td>
-                    <td
-                      className={`px-2 py-1 ${
-                        (rec._perHourVarDynamic ?? 0) >= 0
-                          ? "text-green-700"
-                          : "text-red-700"
-                      }`}
+                <tr className="border-b">
+                  <td className="px-2 py-2 align-top">
+                    {/* 🔹 Wider select for hour */}
+                    <select
+                      className="w-32 sm:w-40 rounded border px-2 py-1 text-xs"
+                      value={selectedHour}
+                      onChange={(e) => setSelectedHour(Number(e.target.value))}
                     >
-                      {formatNumber(rec._perHourVarDynamic ?? 0, 0)}
-                    </td>
-                    <td
-                      className={`px-2 py-1 ${
-                        (rec._netVarVsBaseToDate ?? 0) >= 0
-                          ? "text-green-700"
-                          : "text-red-700"
-                      }`}
-                    >
-                      {formatNumber(rec._netVarVsBaseToDate ?? 0, 0)}
-                    </td>
-                    <td className="px-2 py-1">
-                      {formatNumber(rec.hourlyEfficiency)}
-                    </td>
-                    <td className="px-2 py-1">
-                      {formatNumber(rec.achieveEfficiency)}
-                    </td>
-                    <td className="px-2 py-1">
-                      {formatNumber(rec.totalEfficiency)}
-                    </td>
-                    <td className="px-2 py-1">
-                      {rec.updatedAt
-                        ? new Date(rec.updatedAt).toLocaleTimeString()
-                        : "-"}
-                    </td>
-                  </tr>
-                ))}
+                      {hours.map((hVal) => (
+                        <option key={hVal} value={hVal}>
+                          {hVal} hour{hVal > 1 ? "s" : ""}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="mt-1 text-[10px] text-gray-500">
+                      Current hour (1 ~ {totalWorkingHours})
+                    </p>
+                  </td>
+
+                  <td className="px-2 py-2 align-top">
+                    <div className="rounded border bg-gray-50 px-2 py-1">
+                      {formatNumber(baseTargetPerHour, 0)}
+                    </div>
+                    <p className="mt-1 text-[10px] text-gray-500 leading-tight">
+                      (Manpower × 60 × Plan % ÷ SMV)
+                    </p>
+                  </td>
+
+                  <td className="px-2 py-2 align-top">
+                    <div className="rounded border bg-amber-50 px-2 py-1">
+                      {formatNumber(dynamicTargetThisHour, 0)}
+                    </div>
+                    <p className="mt-1 text-[10px] text-amber-700 leading-tight">
+                      Base + cumulative shortfall vs base
+                    </p>
+                  </td>
+
+                  <td className="px-2 py-2 align-top">
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      className="w-full rounded border px-2 py-1 text-xs"
+                      value={achievedInput}
+                      onChange={(e) => setAchievedInput(e.target.value)}
+                      placeholder="Output this hour (integer)"
+                    />
+                    <p className="mt-1 text-[10px] text-gray-500">
+                      Actual pieces this hour
+                    </p>
+                  </td>
+
+                  <td className="px-2 py-2 align-top">
+                    <div className="rounded border bg-gray-50 px-2 py-1">
+                      {formatNumber(hourlyEfficiency)}
+                    </div>
+                    <p className="mt-1 text-[10px] text-gray-500 leading-tight">
+                      Output × SMV ÷ (Manpower × 60) × 100
+                    </p>
+                  </td>
+
+                  <td className="px-2 py-2 align-top">
+                    <div className="rounded border bg-gray-50 px-2 py-1">
+                      {formatNumber(achieveEfficiency)}
+                    </div>
+                    <p className="mt-1 text-[10px] text-gray-500 leading-tight">
+                      Hourly Output × SMV ÷ (Manpower × 60) × Working Hour
+                    </p>
+                  </td>
+                </tr>
               </tbody>
             </table>
           </div>
-        )}
-      </div>
+
+          {/* Actions */}
+          <div className="flex items-center justify-end gap-2 text-xs">
+            <button
+              type="button"
+              onClick={handleSave}
+              className="rounded bg-gray-900 px-3 py-1 font-medium text-white hover:bg-gray-800 disabled:opacity-60"
+              disabled={saving}
+            >
+              {saving ? "Saving..." : "Save Hour"}
+            </button>
+            <button
+              type="button"
+              onClick={handleEdit}
+              className="rounded border border-gray-400 px-3 py-1 font-medium text-gray-700 hover:bg-gray-100"
+            >
+              Edit (wire later)
+            </button>
+            <button
+              type="button"
+              onClick={handleDelete}
+              className="rounded border border-red-400 px-3 py-1 font-medium text-red-600 hover:bg-red-50"
+            >
+              Delete (wire later)
+            </button>
+          </div>
+
+          {/* Posted hourly data */}
+          <div className="mt-3">
+            <div className="flex items-center justify-between text-xs mb-2">
+              <h3 className="font-semibold">Posted hourly records</h3>
+              {loadingRecords && (
+                <span className="text-[10px] text-slate-500">
+                  Loading hourly records...
+                </span>
+              )}
+            </div>
+
+            {recordsDecorated.length === 0 ? (
+              <p className="text-[11px] text-slate-500">
+                No hourly records saved yet for this header on {selectedDate}.
+              </p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-[11px] border-t">
+                  <thead>
+                    <tr className="bg-slate-50">
+                      <th className="px-2 py-1 text-left">Hour</th>
+                      <th className="px-2 py-1 text-left">Target</th>
+                      <th className="px-2 py-1 text-left">Achieved</th>
+                      <th className="px-2 py-1 text-left">
+                        Δ Var (hour vs dynamic)
+                      </th>
+                      <th className="px-2 py-1 text-left">
+                        Net Var vs Base (to date)
+                      </th>
+                      <th className="px-2 py-1 text-left">Hourly Eff %</th>
+                      <th className="px-2 py-1 text-left">Achieve Eff</th>
+                      <th className="px-2 py-1 text-left">Total Eff %</th>
+                      <th className="px-2 py-1 text-left">Updated At</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recordsDecorated.map((rec) => (
+                      <tr key={rec._id} className="border-b">
+                        <td className="px-2 py-1">{rec._hourNum}</td>
+                        <td className="px-2 py-1">
+                          {formatNumber(rec._dynTargetRounded, 0)}
+                        </td>
+                        <td className="px-2 py-1">{rec._achievedRounded}</td>
+                        <td
+                          className={`px-2 py-1 ${
+                            (rec._perHourVarDynamic ?? 0) >= 0
+                              ? "text-green-700"
+                              : "text-red-700"
+                          }`}
+                        >
+                          {formatNumber(rec._perHourVarDynamic ?? 0, 0)}
+                        </td>
+                        <td
+                          className={`px-2 py-1 ${
+                            (rec._netVarVsBaseToDate ?? 0) >= 0
+                              ? "text-green-700"
+                              : "text-red-700"
+                          }`}
+                        >
+                          {formatNumber(rec._netVarVsBaseToDate ?? 0, 0)}
+                        </td>
+                        <td className="px-2 py-1">
+                          {formatNumber(rec.hourlyEfficiency)}
+                        </td>
+                        <td className="px-2 py-1">
+                          {formatNumber(rec.achieveEfficiency)}
+                        </td>
+                        <td className="px-2 py-1">
+                          {formatNumber(rec.totalEfficiency)}
+                        </td>
+                        <td className="px-2 py-1">
+                          {rec.updatedAt
+                            ? new Date(rec.updatedAt).toLocaleTimeString()
+                            : "-"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }
