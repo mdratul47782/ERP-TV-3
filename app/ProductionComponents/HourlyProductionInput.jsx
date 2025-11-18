@@ -21,7 +21,7 @@ export default function ProductionInputForm() {
   const [todayKey, setTodayKey] = useState(computeTodayKey);
   const lastTickRef = useRef(Date.now());
 
-  // 🔹 Main form state (includes SMV etc.)
+  // 🔹 Main form state
   const [form, setForm] = useState({
     operatorTo: "",
     manpowerPresent: "",
@@ -119,7 +119,7 @@ export default function ProductionInputForm() {
         const json = await res.json();
 
         if (res.ok && json.success && json.data) {
-          // Found existing data for today
+          // Found existing data for today (treat as "already submitted")
           fillFormFromHeader(json.data);
           setHeaderId(json.data._id);
         } else {
@@ -147,12 +147,11 @@ export default function ProductionInputForm() {
     setForm((prev) => {
       const next = { ...prev, [name]: value };
 
-      // 🔹 Auto-calc Manpower Absent when Total Man Power / Present change
+      // Auto-calc Manpower Absent when Total Man Power / Present change
       if (name === "operatorTo" || name === "manpowerPresent") {
         const total = Number(next.operatorTo);
         const present = Number(next.manpowerPresent);
 
-        // valid numbers and not empty strings
         if (
           next.operatorTo !== "" &&
           next.manpowerPresent !== "" &&
@@ -160,10 +159,8 @@ export default function ProductionInputForm() {
           Number.isFinite(present)
         ) {
           const diff = total - present;
-          // never let it go negative; if total < present, clamp to 0
           next.manpowerAbsent = diff >= 0 ? diff.toString() : "0";
         } else {
-          // one of them missing / invalid -> clear absent
           next.manpowerAbsent = "";
         }
       }
@@ -194,10 +191,6 @@ export default function ProductionInputForm() {
   };
 
   // 🔹 Auto-computed TODAY TARGET
-  // Formula:
-  //   Total Working Time (minutes) = manpowerPresent × workingHour × 60
-  //   Today Target = (Total Working Time / SMV) × Efficiency
-  //   Efficiency = planEfficiency% / 100
   const computedTodayTarget = useMemo(() => {
     const manpower = Number(form.manpowerPresent);
     const hours = Number(form.workingHour);
@@ -215,7 +208,6 @@ export default function ProductionInputForm() {
     const target = (totalWorkingTimeMinutes / smv) * eff;
 
     if (!Number.isFinite(target) || target <= 0) return "";
-    // Round to whole pieces; adjust if you prefer decimals
     return Math.round(target);
   }, [
     form.manpowerPresent,
@@ -224,7 +216,7 @@ export default function ProductionInputForm() {
     form.planEfficiency,
   ]);
 
-  // 🔹 Save / Update (always bound to today's date)
+  // 🔹 Save / Update (single submission per date)
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
@@ -235,7 +227,18 @@ export default function ProductionInputForm() {
       return;
     }
 
-    const isUpdate = Boolean(headerId);
+    // If already submitted for today, block submitting again
+    if (headerId) {
+      setError("Today's production header is already submitted. You cannot submit again today.");
+      return;
+    }
+
+    // Confirm box before first submit for current date
+    const confirmed = window.confirm(
+      "Are you sure you want to submit today's production header? You won't be able to edit it again today."
+    );
+    if (!confirmed) return;
+
     setSaving(true);
 
     try {
@@ -245,23 +248,16 @@ export default function ProductionInputForm() {
           ? computedTargetNumber
           : Number(form.todayTarget) || 0;
 
-      // 🔹 For updates (PATCH), don't send productionDate
-      // For new records (POST), include productionDate
       const payload = {
         ...form,
         todayTarget: finalTodayTarget,
         productionUser: buildProductionUserSnapshot(),
         qualityUser: buildQualityUserSnapshot(),
+        productionDate: todayKey, // always bind to today's date on first submit
       };
 
-      if (!isUpdate) {
-        payload.productionDate = todayKey;
-      }
-
-      const endpoint = isUpdate
-        ? `/api/production-headers/${headerId}`
-        : "/api/production-headers";
-      const method = isUpdate ? "PATCH" : "POST";
+      const endpoint = "/api/production-headers";
+      const method = "POST";
 
       const res = await fetch(endpoint, {
         method,
@@ -275,21 +271,15 @@ export default function ProductionInputForm() {
         const msg =
           json?.errors?.join(", ") ||
           json?.message ||
-          (isUpdate
-            ? "Failed to update production header"
-            : "Failed to save production header");
+          "Failed to save production header";
         throw new Error(msg);
       }
 
       const saved = json.data;
       fillFormFromHeader(saved);
-      setHeaderId(saved._id);
+      setHeaderId(saved._id); // 🔹 this locks the form for today
 
-      setSuccess(
-        isUpdate
-          ? "Production header updated successfully."
-          : "Production header saved successfully for today."
-      );
+      setSuccess("Production header submitted successfully for today.");
     } catch (err) {
       console.error(err);
       setError(err.message || "Something went wrong.");
@@ -320,7 +310,7 @@ export default function ProductionInputForm() {
 
       resetForm();
       setHeaderId(null);
-      setSuccess("Production header deleted successfully.");
+      setSuccess("Production header deleted successfully. You can submit again for today.");
     } catch (err) {
       console.error(err);
       setError(err.message || "Something went wrong while deleting.");
@@ -333,6 +323,7 @@ export default function ProductionInputForm() {
     saving || deleting || loadingExisting || productionLoading || authLoading;
 
   const isExisting = Boolean(headerId);
+  const hasSubmittedToday = isExisting; // clearer alias
 
   return (
     <div className="space-y-3">
@@ -384,7 +375,7 @@ export default function ProductionInputForm() {
             placeholder="30"
             type="number"
           />
-          {/* 🔹 Auto-calculated from Total - Present */}
+          {/* Auto-calculated from Total - Present */}
           <Field
             label="Manpower Absent (auto)"
             name="manpowerAbsent"
@@ -426,7 +417,7 @@ export default function ProductionInputForm() {
             type="number"
           />
 
-          {/* 🔹 Today Target = auto-calculated, read-only */}
+          {/* Today Target = auto-calculated, read-only */}
           <Field
             label="Today Target (auto)"
             name="todayTarget"
@@ -474,14 +465,12 @@ export default function ProductionInputForm() {
           <button
             type="submit"
             className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm disabled:opacity-70"
-            disabled={busy}
+            disabled={busy || hasSubmittedToday}
           >
-            {saving
-              ? isExisting
-                ? "Updating..."
-                : "Saving..."
-              : isExisting
-              ? "Update Header"
+            {hasSubmittedToday
+              ? "Already Submitted"
+              : saving
+              ? "Saving..."
               : "Save Header"}
           </button>
         </div>
