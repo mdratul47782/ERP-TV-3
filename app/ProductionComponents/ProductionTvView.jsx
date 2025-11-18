@@ -195,7 +195,7 @@ function VarianceMiniBar({ data = [] }) {
               <title>
                 {`H${d.hour ?? idx + 1}: ${
                   v >= 0 ? "+" : ""
-                }${v.toFixed(0)} net var`}
+                }${v.toFixed(0)} vs target`}
               </title>
             </rect>
           </g>
@@ -752,7 +752,7 @@ export default function ProductionTvView({
   }, [mediaLinks, ProductionAuth, productionId, productionName]);
 
   /* ----- derived KPIs ----- */
-  const totalWorkingHours = activeHeader?.workingHour ?? 1; // (still available if you need it later)
+  const totalWorkingHours = activeHeader?.workingHour ?? 1;
   const manpowerPresent = activeHeader?.manpowerPresent ?? 0;
   const smv = activeHeader?.smv ?? 1;
   const planEfficiencyPercent = activeHeader?.planEfficiency ?? 0;
@@ -792,10 +792,15 @@ export default function ProductionTvView({
       const achievedRounded = Math.round(safeNum(rec.achievedQty, 0));
       const perHourVarDynamic = achievedRounded - dynTarget;
 
+      // 🔹 Hourly Efficiency Calculation
+      let calculatedHourlyEff = 0;
+      if (manpowerPresent > 0) {
+        calculatedHourlyEff = (achievedRounded * smv * 100) / (manpowerPresent * 60);
+      }
+
       runningAchieved += achievedRounded;
 
       const baselineToDate = baseTargetPerHour * hourN;
-      // NET VARIANCE: Total Achieved So Far - Total Planned So Far
       const netVarVsBaseToDate = runningAchieved - baselineToDate;
 
       return {
@@ -807,9 +812,10 @@ export default function ProductionTvView({
         _netVarVsBaseToDate: netVarVsBaseToDate,
         _baselineToDatePrev: baselineToDatePrev,
         _cumulativeShortfallVsBasePrev: cumulativeShortfallVsBasePrev,
+        _calculatedHourlyEff: calculatedHourlyEff, 
       };
     });
-  }, [hourlyForUser, baseTargetPerHour]);
+  }, [hourlyForUser, baseTargetPerHour, manpowerPresent, smv]);
 
   const dayTarget = safeNum(todayTargetRaw);
   const totalAchieved = useMemo(
@@ -828,63 +834,62 @@ export default function ProductionTvView({
 
   const currentHour = currentRecord?._hourNum || null;
   
-  // UPDATED: Display NET Variance instead of Hourly Variance
+  // 🔹 CHANGED: Use Net Variance (Cumulative vs Base) instead of Per-Hour Variance
   const currentVariance = safeNum(currentRecord?._netVarVsBaseToDate, 0);
   
-  const currentHourlyEff = safeNum(currentRecord?.hourlyEfficiency, 0);
+  const currentHourlyEff = safeNum(currentRecord?._calculatedHourlyEff, 0);
 
   const avgEff = useMemo(() => {
     if (!recordsDecorated.length) return 0;
 
     const sum = recordsDecorated.reduce((acc, rec) => {
-      const eff =
-        rec.achieveEfficiency ??
-        rec.hourlyEfficiency ??
-        rec.totalEfficiency ??
-        0;
-      return acc + safeNum(eff, 0);
+      const eff = safeNum(rec._calculatedHourlyEff, 0);
+      return acc + eff;
     }, 0);
 
     return sum / recordsDecorated.length;
   }, [recordsDecorated]);
 
-  /* ----- UPDATED: variance series for bar chart (Shows NET Variance trend) ----- */
+  /* ----- variance series for bar chart (H1 → current H) ----- */
   const varianceSeries = useMemo(
     () =>
       recordsDecorated.map((rec) => ({
         hour: rec._hourNum,
-        // Chart now reflects the accumulated (Net) variance per hour
-        value: safeNum(rec._netVarVsBaseToDate, 0),
+        value: safeNum(rec._perHourVarDynamic, 0),
       })),
     [recordsDecorated]
   );
 
   /* ----- pies data for Hourly Eff & Avg Eff ----- */
   const hourlyEffPieData = useMemo(() => {
-    const eff = Math.max(0, Math.min(100, safeNum(currentHourlyEff, 0)));
-    const loss = Math.max(0, 100 - eff);
+    // Display value (can be > 100%)
+    const rawEff = safeNum(currentHourlyEff, 0);
+    // Visual value (capped at 100 for pie chart drawing logic)
+    const visualEff = Math.max(0, Math.min(100, rawEff));
+    const visualLoss = 100 - visualEff;
 
-    if (eff === 0 && loss === 0) {
+    if (rawEff === 0) {
       return [];
     }
 
     return [
-      { label: "Eff", value: eff },
-      { label: "Loss", value: loss },
+      { label: "Eff", value: visualEff },
+      { label: "Loss", value: visualLoss },
     ];
   }, [currentHourlyEff]);
 
   const avgEffPieData = useMemo(() => {
-    const eff = Math.max(0, Math.min(100, safeNum(avgEff, 0)));
-    const loss = Math.max(0, 100 - eff);
+    const rawEff = safeNum(avgEff, 0);
+    const visualEff = Math.max(0, Math.min(100, rawEff));
+    const visualLoss = 100 - visualEff;
 
-    if (eff === 0 && loss === 0) {
+    if (rawEff === 0) {
       return [];
     }
 
     return [
-      { label: "Avg Eff", value: eff },
-      { label: "Loss", value: loss },
+      { label: "Avg Eff", value: visualEff },
+      { label: "Loss", value: visualLoss },
     ];
   }, [avgEff]);
 
@@ -977,9 +982,9 @@ export default function ProductionTvView({
               />
             </div>
 
-            {/* Variance with bar chart H1 → current H (NET VARIANCE) */}
+            {/* Variance with bar chart H1 → current H */}
             <KpiBarTile
-              label="Net Variance"
+              label="Variance Qty"
               value={`${
                 currentVariance >= 0 ? "+" : ""
               }${formatNumber(currentVariance, 0)}`}
@@ -994,20 +999,14 @@ export default function ProductionTvView({
                 label="Hourly Eff"
                 tone="amber"
                 icon={Zap}
-                valuePercent={Math.max(
-                  0,
-                  Math.min(100, safeNum(currentHourlyEff, 0))
-                )}
+                valuePercent={safeNum(currentHourlyEff, 0)}
                 pieData={hourlyEffPieData}
               />
               <KpiPieTile
                 label="Avg Eff"
                 tone="purple"
                 icon={Activity}
-                valuePercent={Math.max(
-                  0,
-                  Math.min(100, safeNum(avgEff, 0))
-                )}
+                valuePercent={safeNum(avgEff, 0)}
                 pieData={avgEffPieData}
               />
             </div>

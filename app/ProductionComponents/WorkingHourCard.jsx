@@ -703,7 +703,7 @@ export default function WorkingHourCard({ header: initialHeader }) {
                       {formatNumber(achieveEfficiency)}
                     </div>
                     <p className="mt-1 text-[10px] text-gray-500 leading-tight">
-                      Hourly Output × SMV ÷ (Manpower × 60) × Working Hour
+                      (Total Hourly Output so far × SMV) ÷ (Manpower × 60 × Working Hour) * 100
                     </p>
                   </td>
                 </tr>
