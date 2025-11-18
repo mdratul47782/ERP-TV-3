@@ -2,6 +2,7 @@
 "use client";
 
 import { useMemo, useState, useEffect } from "react";
+import Link from "next/link";
 import { useProductionAuth } from "../hooks/useProductionAuth";
 import {
   Image as ImageIcon,
@@ -11,11 +12,12 @@ import {
   Activity,
   Zap,
   CheckCircle2,
+  ArrowRightCircle,
 } from "lucide-react";
 
 /* -------------------------- Shared helpers & UI -------------------------- */
 
-// Shared tone map for KPI + Media tiles (aligned with MediaAndKpisTemplate)
+// Shared tone map for KPI + Media tiles
 const TONE_MAP = {
   emerald: {
     card:
@@ -60,7 +62,7 @@ function KpiTile({ label, value, tone = "emerald", icon: Icon }) {
 
   return (
     <div
-      className={`group relative overflow-hidden rounded-2xl border ${toneMap.card} bg-gradient-to-br p-2.5 sm:p-3 ring-1 transition-transform duration-200 hover:translate-y-0.5 min-h-[84px]`}
+      className={`group relative overflow-hidden rounded-2xl border ${toneMap.card} bg-gradient-to-br p-2.5 sm:p-3 ring-1 transition-transform duration-200 hover:-translate-y-0.5 min-h-[90px]`}
     >
       {/* subtle corner glow */}
       <div className="pointer-events-none absolute -inset-px rounded-[1.1rem] bg-[radial-gradient(120px_60px_at_0%_0%,rgba(255,255,255,0.12),transparent)]" />
@@ -82,13 +84,213 @@ function KpiTile({ label, value, tone = "emerald", icon: Icon }) {
   );
 }
 
-// Media tile styled like in MediaAndKpisTemplate
+/* -------- Mini bar chart for variance (H1 → current hour) -------- */
+
+function VarianceMiniBar({ data = [] }) {
+  if (!data.length) {
+    return (
+      <div className="flex h-16 items-center justify-center rounded-lg border border-white/10 bg-slate-900/40 text-[10px] text-white/50">
+        No variance data yet
+      </div>
+    );
+  }
+
+  const width = 220;
+  const height = 60;
+  const baseline = height / 2;
+  const maxAbs = Math.max(
+    ...data.map((d) => Math.abs(d.value || 0)),
+    1
+  );
+  const barGap = 4;
+  const barWidth = Math.max(
+    4,
+    (width - barGap * (data.length + 1)) / data.length
+  );
+
+  return (
+    <svg
+      viewBox={`0 0 ${width} ${height}`}
+      className="w-full h-16 rounded-lg border border-white/10 bg-slate-900/60"
+    >
+      {/* zero line */}
+      <line
+        x1="0"
+        x2={width}
+        y1={baseline}
+        y2={baseline}
+        stroke="rgba(148,163,184,0.6)"
+        strokeWidth="1"
+        strokeDasharray="3 3"
+      />
+
+      {/* bars per hour */}
+      {data.map((d, idx) => {
+        const v = d.value || 0;
+        const h = (Math.abs(v) / maxAbs) * (height / 2 - 6);
+        const x = barGap + idx * (barWidth + barGap);
+        const y = v >= 0 ? baseline - h : baseline;
+        const fill = v >= 0 ? "#22c55e" : "#ef4444";
+
+        return (
+          <rect
+            key={d.hour ?? idx}
+            x={x}
+            y={y}
+            width={barWidth}
+            height={h}
+            rx="2"
+            ry="2"
+            fill={fill}
+            opacity="0.9"
+          />
+        );
+      })}
+    </svg>
+  );
+}
+
+// KPI tile with bar chart inside (for Variance Qty)
+function KpiBarTile({
+  label,
+  value,
+  tone = "emerald",
+  icon: Icon,
+  data = [],
+}) {
+  const toneMap = TONE_MAP[tone] || TONE_MAP.emerald;
+  const lastHour = data.length ? data[data.length - 1].hour : null;
+
+  return (
+    <div
+      className={`group relative overflow-hidden rounded-2xl border ${toneMap.card} bg-gradient-to-br p-2.5 sm:p-3 ring-1 transition-transform duration-200 hover:-translate-y-0.5 min-h-[150px]`}
+    >
+      {/* subtle corner glow */}
+      <div className="pointer-events-none absolute -inset-px rounded-[1.1rem] bg-[radial-gradient(120px_60px_at_0%_0%,rgba(255,255,255,0.12),transparent)]" />
+
+      <div className="relative flex flex-col gap-2">
+        {/* Header row */}
+        <div className="flex items-center justify-between">
+          <div
+            className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${toneMap.badge}`}
+          >
+            {Icon ? <Icon className="h-3.5 w-3.5" /> : null}
+            {label}
+          </div>
+          <span className="text-[10px] sm:text-xs text-white/70">KPI</span>
+        </div>
+
+        {/* Value + range info */}
+        <div className="flex items-end justify-between gap-2">
+          <div className="text-2xl sm:text-3xl font-extrabold tabular-nums text-white">
+            {value}
+          </div>
+          <div className="text-[10px] text-white/60">
+            {lastHour ? `H1 → H${lastHour}` : "No hours"}
+          </div>
+        </div>
+
+        {/* Mini bar chart */}
+        <VarianceMiniBar data={data} />
+      </div>
+    </div>
+  );
+}
+
+// KPI tile with pie chart inside
+function KpiPieTile({
+  label,
+  tone = "amber",
+  icon: Icon,
+  valuePercent = 0,
+  pieData = [],
+}) {
+  const toneMap = TONE_MAP[tone] || TONE_MAP.emerald;
+
+  return (
+    <div
+      className={`group relative overflow-hidden rounded-2xl border ${toneMap.card} bg-gradient-to-br p-2.5 sm:p-3 ring-1 transition-transform duration-200 hover:-translate-y-0.5 min-h-[150px]`}
+    >
+      {/* subtle corner glow */}
+      <div className="pointer-events-none absolute -inset-px rounded-[1.1rem] bg-[radial-gradient(130px_60px_at_0%_0%,rgba(255,255,255,0.14),transparent)]" />
+
+      <div className="relative flex flex-col gap-2">
+        {/* Header chip + label row */}
+        <div className="flex items-center justify-between">
+          <div
+            className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${toneMap.badge}`}
+          >
+            {Icon ? <Icon className="h-3.5 w-3.5" /> : null}
+            {label}
+          </div>
+          <span className="text-[10px] sm:text-xs text-white/70">KPI</span>
+        </div>
+
+        {/* Pie only (percentage inside the donut) */}
+        <div className="flex items-center justify-center">
+          <DefectsPie
+            defects={pieData}
+            size={130}
+            thickness={18}
+            centerTitle=""
+            centerValue={valuePercent}
+            showPercent
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Navigation KPI tile to go to another page
+function NavKpiTile({
+  href,
+  label,
+  description,
+  tone = "sky",
+  icon: Icon = ArrowRightCircle,
+}) {
+  const toneMap = TONE_MAP[tone] || TONE_MAP.sky;
+
+  return (
+    <Link href={href} className="group block">
+      <div
+        className={`relative overflow-hidden rounded-2xl border ${toneMap.card} bg-gradient-to-br p-3 ring-1 shadow-sm transition-transform duration-200 hover:-translate-y-0.5 hover:ring-2 cursor-pointer`}
+      >
+        <div className="pointer-events-none absolute -inset-px rounded-[1.1rem] bg-[radial-gradient(140px_70px_at_0%_0%,rgba(255,255,255,0.18),transparent)]" />
+
+        <div className="relative flex items-center justify-between gap-3">
+          <div className="flex flex-col gap-1">
+            <div className="inline-flex items-center gap-1 rounded-md bg-white/90 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-900">
+              {Icon ? <Icon className="h-3.5 w-3.5" /> : null}
+              Go to Screen
+            </div>
+            <div className="text-sm font-semibold text-white">
+              {label}
+            </div>
+            {description && (
+              <p className="text-[11px] text-white/70">{description}</p>
+            )}
+          </div>
+
+          <div className="shrink-0">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-slate-950/40 transition-colors group-hover:bg-white group-hover:text-slate-900">
+              <ArrowRightCircle className="h-5 w-5" />
+            </div>
+          </div>
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+// Media tile
 function MediaTile({ title, icon: Icon, children, tone = "emerald" }) {
   const toneMap = TONE_MAP[tone] || TONE_MAP.emerald;
 
   return (
     <div
-      className={`group relative h-full overflow-hidden rounded-2xl border ${toneMap.card} bg-gradient-to-br p-2.5 sm:p-3 ring-1 shadow-sm transition-transform duration-200 hover:translate-y-0.5`}
+      className={`group relative h-full overflow-hidden rounded-2xl border ${toneMap.card} bg-gradient-to-br p-2.5 sm:p-3 ring-1 shadow-sm transition-transform duration-200 hover:-translate-y-0.5`}
     >
       {/* subtle corner glow */}
       <div className="pointer-events-none absolute -inset-px rounded-[1.1rem] bg-[radial-gradient(140px_70px_at_0%_0%,rgba(255,255,255,0.18),transparent)]" />
@@ -103,7 +305,7 @@ function MediaTile({ title, icon: Icon, children, tone = "emerald" }) {
         </div>
 
         {/* content area */}
-        <div className="relative flex-1 grid place-items-center overflow-hidden rounded-xl border border-white/15 bg-gradient-to-br from-slate-900/80 to-slate-900/30 min-h-[170px] sm:min-h-[220px] md:min-h-[260px] lg:min-h-[300px]">
+        <div className="relative flex-1 grid place-items-center overflow-hidden rounded-xl border border-white/15 bg-gradient-to-br from-slate-900/80 to-slate-900/30">
           {children}
         </div>
       </div>
@@ -122,7 +324,7 @@ function VideoPlayer({ src }) {
   return (
     <video
       key={src}
-      className="h-full w-full rounded-xl border border-white/10"
+      className="h-full w-full rounded-xl border border-white/10 object-cover"
       autoPlay
       loop
       muted
@@ -157,11 +359,135 @@ function toLocalDateLabel(d = new Date()) {
   });
 }
 
+/* ----- normalize for pie (top N + "Others") ----- */
+function normalizeDefects(defects = [], maxItems = 3) {
+  const cleaned = (defects || [])
+    .map((d) => ({
+      label: d.label ?? d.name ?? "-",
+      value: safeNum(d.value ?? d.count ?? d.qty, 0),
+    }))
+    .filter((d) => d.value > 0);
+
+  if (!cleaned.length) return [];
+
+  cleaned.sort((a, b) => b.value - a.value);
+
+  if (cleaned.length <= maxItems) return cleaned;
+
+  const top = cleaned.slice(0, maxItems - 1);
+  const rest = cleaned.slice(maxItems - 1);
+  const othersTotal = rest.reduce((sum, d) => sum + d.value, 0);
+
+  return [
+    ...top,
+    {
+      label: "Others",
+      value: othersTotal,
+    },
+  ];
+}
+
+/* ---------------- Donut / Pie component ---------------- */
+function DefectsPie({
+  defects,
+  size = 150,
+  thickness = 18,
+  centerTitle = "Metric",
+  centerValue,
+  showPercent = false,
+}) {
+  const norm = normalizeDefects(defects, 3);
+  const total = norm.reduce((a, b) => a + b.value, 0);
+
+  const COLORS = ["#22c55e", "#eab308", "#3b82f6"]; // emerald, amber, sky
+  const r = (size - thickness) / 2;
+  const c = 2 * Math.PI * r;
+
+  const EPS = 0.5; // seam trim
+  let acc = 0;
+
+  const displayValue =
+    typeof centerValue === "number" ? centerValue : total;
+
+  return (
+    <div className="relative grid place-items-center sm:scale-100 scale-95">
+      <svg
+        width={size}
+        height={size}
+        viewBox={`0 0 ${size} ${size}`}
+        className="drop-shadow-[0_0_18px_rgba(15,23,42,0.85)]"
+      >
+        <defs>
+          <radialGradient id="pieGlow" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#ffffff" stopOpacity="0.22" />
+            <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
+          </radialGradient>
+        </defs>
+
+        <g transform={`translate(${size / 2} ${size / 2}) rotate(-90)`}>
+          {/* base ring */}
+          <circle
+            r={r}
+            fill="none"
+            stroke="rgba(148,163,184,0.35)"
+            strokeWidth={thickness}
+          />
+
+          {/* slices */}
+          {total > 0 &&
+            norm.map((s, i) => {
+              const frac = s.value / total;
+              const dash = Math.max(0, c * frac - EPS);
+              const gap = Math.max(0, c - dash);
+              const dashoffset = c * (1 - acc);
+              acc += frac;
+
+              return (
+                <circle
+                  key={i}
+                  r={r}
+                  fill="none"
+                  stroke={COLORS[i % COLORS.length]}
+                  strokeWidth={thickness}
+                  strokeLinecap="round"
+                  strokeDasharray={`${dash} ${gap}`}
+                  strokeDashoffset={dashoffset}
+                />
+              );
+            })}
+        </g>
+
+        {/* soft inner glow */}
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r - thickness}
+          fill="url(#pieGlow)"
+        />
+      </svg>
+
+      {/* center total / % */}
+      <div className="pointer-events-none absolute grid place-items-center text-center">
+        {centerTitle && (
+          <div className="text-[11px] uppercase tracking-wider text-white/60 mb-0.5">
+            {centerTitle}
+          </div>
+        )}
+        <div className="text-2xl sm:text-3xl font-extrabold tabular-nums text-white">
+          {showPercent
+            ? `${displayValue.toFixed(1)}%`
+            : displayValue.toFixed(0)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ---------------- Main component ---------------- */
 export default function ProductionTvView({
   hourlyData = [],
   headerData = [],
-  registerData = [], // accepted, not shown
+  registerData = [],
   users = [],
   mediaLinks = [],
 }) {
@@ -176,16 +502,13 @@ export default function ProductionTvView({
     "Production User";
   const productionId = ProductionAuth?.id || ProductionAuth?._id || null;
 
-  /* ---------------- LIVE STATE (auto-refresh every 3s) ---------------- */
-
-  // 🔹 Use props as initial snapshot; then keep a live copy
+  /* ----- LIVE STATE (auto-refresh every 3s) ----- */
   const [liveHeader, setLiveHeader] = useState(null);
   const [liveHourly, setLiveHourly] = useState([]);
   const [liveError, setLiveError] = useState("");
   const [liveLoading, setLiveLoading] = useState(false);
 
   useEffect(() => {
-    // Nothing to do until we know which user
     if (!ProductionAuth?.id) return;
 
     let cancelled = false;
@@ -197,7 +520,7 @@ export default function ProductionTvView({
 
         const today = new Date().toISOString().slice(0, 10);
 
-        // 🔹 1) Get today's header for this production user
+        // 1) Header
         const headerParams = new URLSearchParams({
           productionUserId: ProductionAuth.id,
           date: today,
@@ -231,7 +554,7 @@ export default function ProductionTvView({
           setLiveHeader(headerFromApi);
         }
 
-        // 🔹 2) Get hourly records for that header + user
+        // 2) Hourly
         const hourlyParams = new URLSearchParams({
           headerId: headerFromApi._id,
           productionUserId: ProductionAuth.id,
@@ -264,10 +587,7 @@ export default function ProductionTvView({
       }
     };
 
-    // Initial fetch
     fetchLiveData();
-
-    // 🔁 Poll every 3 seconds
     const intervalId = setInterval(fetchLiveData, 3000);
 
     return () => {
@@ -276,10 +596,8 @@ export default function ProductionTvView({
     };
   }, [ProductionAuth?.id]);
 
-  /* ---------------- Header for this production user ---------------- */
-
+  /* ----- active header ----- */
   const activeHeader = useMemo(() => {
-    // 🔹 Prefer live header (today, from API)
     if (liveHeader) return liveHeader;
 
     if (!ProductionAuth) return null;
@@ -311,15 +629,12 @@ export default function ProductionTvView({
       )[0];
   }, [liveHeader, ProductionAuth, headerData, productionId, productionName]);
 
-  /* ---------------- Hourly records for this header + production user ---------------- */
-
+  /* ----- hourly for user ----- */
   const hourlyForUser = useMemo(() => {
     if (!ProductionAuth || !activeHeader) return [];
 
     const headerId = activeHeader._id;
     const nameLower = productionName.trim().toLowerCase();
-
-    // 🔹 Prefer live hourly data from polling; fallback to props
     const source = liveHourly.length ? liveHourly : hourlyData;
 
     const filtered = (source || []).filter((r) => {
@@ -350,8 +665,7 @@ export default function ProductionTvView({
     productionName,
   ]);
 
-  /* ---------------- Media (image + video) for this user ---------------- */
-
+  /* ----- media links ----- */
   const latestMedia = useMemo(() => {
     if (!ProductionAuth) return null;
     const nameLower = productionName.trim().toLowerCase();
@@ -380,17 +694,14 @@ export default function ProductionTvView({
       )[0];
   }, [mediaLinks, ProductionAuth, productionId, productionName]);
 
-  /* ---------------- Derived numbers & decoration (same logic as WorkingHourCard) ---------------- */
-
-  // Header-derived values
-  const totalWorkingHours = activeHeader?.workingHour ?? 1;
+  /* ----- derived KPIs ----- */
+  const totalWorkingHours = activeHeader?.workingHour ?? 1; // (still available if you need it later)
   const manpowerPresent = activeHeader?.manpowerPresent ?? 0;
   const smv = activeHeader?.smv ?? 1;
   const planEfficiencyPercent = activeHeader?.planEfficiency ?? 0;
   const planEffDecimal = planEfficiencyPercent / 100;
   const todayTargetRaw = activeHeader?.todayTarget ?? 0;
 
-  // Base target per hour (same formula as WorkingHourCard)
   const targetFromCapacity =
     manpowerPresent > 0 && smv > 0
       ? (manpowerPresent * 60 * planEffDecimal) / smv
@@ -402,7 +713,6 @@ export default function ProductionTvView({
   const baseTargetPerHourRaw = targetFromCapacity || targetFromTodayTarget || 0;
   const baseTargetPerHour = Math.round(baseTargetPerHourRaw);
 
-  // Decorate hourly records exactly like WorkingHourCard.jsx
   const recordsDecorated = useMemo(() => {
     const recordsSorted = (hourlyForUser || [])
       .map((rec) => ({ ...rec, _hourNum: Number(rec.hour) }))
@@ -414,26 +724,19 @@ export default function ProductionTvView({
     return recordsSorted.map((rec) => {
       const hourN = rec._hourNum;
 
-      // Baseline vs base (k-1)
       const baselineToDatePrev = baseTargetPerHour * (hourN - 1);
       const cumulativeShortfallVsBasePrev = Math.max(
         0,
         baselineToDatePrev - runningAchieved
       );
 
-      // Dynamic target for this hour = base + shortfall vs base up to (h-1)
       const dynTarget = baseTargetPerHour + cumulativeShortfallVsBasePrev;
 
-      // Rounded achieved for this hour
       const achievedRounded = Math.round(safeNum(rec.achievedQty, 0));
-
-      // Per-hour variance vs dynamic
       const perHourVarDynamic = achievedRounded - dynTarget;
 
-      // Update cumulative achieved
       runningAchieved += achievedRounded;
 
-      // Net variance vs base to date (this hour)
       const baselineToDate = baseTargetPerHour * hourN;
       const netVarVsBaseToDate = runningAchieved - baselineToDate;
 
@@ -450,10 +753,7 @@ export default function ProductionTvView({
     });
   }, [hourlyForUser, baseTargetPerHour]);
 
-  // Target Qty for the day (from header)
   const dayTarget = safeNum(todayTargetRaw);
-
-  // Achieve Qty: sum of rounded achieved
   const totalAchieved = useMemo(
     () =>
       recordsDecorated.reduce(
@@ -463,21 +763,15 @@ export default function ProductionTvView({
     [recordsDecorated]
   );
 
-  // Current hour = last decorated record
   const currentRecord =
     recordsDecorated.length > 0
       ? recordsDecorated[recordsDecorated.length - 1]
       : null;
 
   const currentHour = currentRecord?._hourNum || null;
-
-  // Variance Qty for current hour: Δ Var (hour vs dynamic)
   const currentVariance = safeNum(currentRecord?._perHourVarDynamic, 0);
-
-  // Hourly Efficiency: from the record
   const currentHourlyEff = safeNum(currentRecord?.hourlyEfficiency, 0);
 
-  // Avg Efficiency: average efficiency across hours
   const avgEff = useMemo(() => {
     if (!recordsDecorated.length) return 0;
 
@@ -493,7 +787,46 @@ export default function ProductionTvView({
     return sum / recordsDecorated.length;
   }, [recordsDecorated]);
 
-  // 🔒 Auth guard
+  /* ----- variance series for bar chart (H1 → current H) ----- */
+  const varianceSeries = useMemo(
+    () =>
+      recordsDecorated.map((rec) => ({
+        hour: rec._hourNum,
+        value: safeNum(rec._perHourVarDynamic, 0),
+      })),
+    [recordsDecorated]
+  );
+
+  /* ----- pies data for Hourly Eff & Avg Eff ----- */
+  const hourlyEffPieData = useMemo(() => {
+    const eff = Math.max(0, Math.min(100, safeNum(currentHourlyEff, 0)));
+    const loss = Math.max(0, 100 - eff);
+
+    if (eff === 0 && loss === 0) {
+      return [];
+    }
+
+    return [
+      { label: "Eff", value: eff },
+      { label: "Loss", value: loss },
+    ];
+  }, [currentHourlyEff]);
+
+  const avgEffPieData = useMemo(() => {
+    const eff = Math.max(0, Math.min(100, safeNum(avgEff, 0)));
+    const loss = Math.max(0, 100 - eff);
+
+    if (eff === 0 && loss === 0) {
+      return [];
+    }
+
+    return [
+      { label: "Avg Eff", value: eff },
+      { label: "Loss", value: loss },
+    ];
+  }, [avgEff]);
+
+  /* ----- Auth guard ----- */
   if (!ProductionAuth) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
@@ -515,10 +848,10 @@ export default function ProductionTvView({
   return (
     <div className="min-h-screen bg-slate-950">
       <div className="relative mx-auto max-w-7xl p-2 sm:p-3 md:p-4 text-white">
-        {/* Ambient gradient background */}
+        {/* background */}
         <div className="pointer-events-none absolute -inset-4 -z-10 bg-[radial-gradient(1200px_600px_at_10%_-10%,rgba(16,185,129,0.15),transparent),radial-gradient(900px_400px_at_100%_0%,rgba(56,189,248,0.15),transparent)]" />
 
-        {/* Optional live status banner */}
+        {/* live status */}
         <div className="mb-2 flex items-center justify-between text-[11px] text-white/70">
           <span>
             {todayLabel}
@@ -537,11 +870,10 @@ export default function ProductionTvView({
           </span>
         </div>
 
-        {/* Main Grid: Media + KPIs */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-3 md:gap-4">
-          {/* LEFT: Media (Image + Video) */}
-          <section className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3">
-            {/* IMAGE */}
+        {/* main grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-3 md:gap-4 items-stretch">
+          {/* LEFT: media */}
+          <section className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3 min-h-[360px] sm:min-h-[420px]">
             <MediaTile title="Line Image" icon={ImageIcon} tone="sky">
               {imageSrc && !imgError ? (
                 <img
@@ -556,7 +888,6 @@ export default function ProductionTvView({
               )}
             </MediaTile>
 
-            {/* VIDEO */}
             <MediaTile title="Line Video" icon={PlayCircle} tone="emerald">
               {videoSrc ? (
                 <VideoPlayer src={videoSrc} />
@@ -566,8 +897,8 @@ export default function ProductionTvView({
             </MediaTile>
           </section>
 
-          {/* RIGHT: KPIs (uses live data) */}
-          <aside className="flex min-h-0 flex-col gap-2.5 sm:gap-3">
+          {/* RIGHT: KPIs */}
+          <aside className="flex min-h-[360px] sm:min-h-[420px] flex-col gap-2.5 sm:gap-3">
             {/* Target + Achieve */}
             <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
               <KpiTile
@@ -584,32 +915,48 @@ export default function ProductionTvView({
               />
             </div>
 
-            {/* Variance: Δ Var (hour vs dynamic) for latest hour */}
-            <KpiTile
+            {/* Variance with bar chart H1 → current H */}
+            <KpiBarTile
               label="Variance Qty"
-              value={`${currentVariance >= 0 ? "+" : ""}${formatNumber(
-                currentVariance,
-                0
-              )}`}
+              value={`${
+                currentVariance >= 0 ? "+" : ""
+              }${formatNumber(currentVariance, 0)}`}
               tone={currentVariance >= 0 ? "emerald" : "red"}
               icon={TrendingUp}
+              data={varianceSeries}
             />
 
-            {/* Hourly Eff + Avg Eff */}
-            <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
-              <KpiTile
+            {/* Eff KPI tiles with graph inside */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3">
+              <KpiPieTile
                 label="Hourly Eff"
-                value={`${formatNumber(currentHourlyEff, 1)}%`}
                 tone="amber"
                 icon={Zap}
+                valuePercent={Math.max(
+                  0,
+                  Math.min(100, safeNum(currentHourlyEff, 0))
+                )}
+                pieData={hourlyEffPieData}
               />
-              <KpiTile
+              <KpiPieTile
                 label="Avg Eff"
-                value={`${formatNumber(avgEff, 1)}%`}
                 tone="purple"
                 icon={Activity}
+                valuePercent={Math.max(
+                  0,
+                  Math.min(100, safeNum(avgEff, 0))
+                )}
+                pieData={avgEffPieData}
               />
             </div>
+
+            {/* Nav KPI tile to /hourlyproduction */}
+            <NavKpiTile
+              href="/hourlyproduction"
+              label="Hourly Production Screen"
+              description="Open hourly production input and live working hour details."
+              tone="sky"
+            />
           </aside>
         </div>
       </div>
