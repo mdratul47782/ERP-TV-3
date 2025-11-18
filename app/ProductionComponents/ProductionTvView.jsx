@@ -1013,9 +1013,9 @@ export default function ProductionTvView({
 
             {/* Nav KPI tile to /hourlyproduction (reduced size) */}
             <NavKpiTile
-              href="/hourlyproduction"
-              label="Hourly Production Screen"
-              description="Open hourly production input and live working hour details."
+              href="/ProductionHomePage"
+              label="Production Home Page"
+              description="Open Production Home Page and see working hour details."
               tone="sky"
             />
           </aside>
