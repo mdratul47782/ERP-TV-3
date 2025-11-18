@@ -1,7 +1,7 @@
 // app/ProductionComponents/ProductionTvView.js
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useProductionAuth } from "../hooks/useProductionAuth";
 import {
   Image as ImageIcon,
@@ -176,8 +176,112 @@ export default function ProductionTvView({
     "Production User";
   const productionId = ProductionAuth?.id || ProductionAuth?._id || null;
 
-  /* ---------------- Header for this production user (latest by updatedAt) ---------------- */
+  /* ---------------- LIVE STATE (auto-refresh every 3s) ---------------- */
+
+  // 🔹 Use props as initial snapshot; then keep a live copy
+  const [liveHeader, setLiveHeader] = useState(null);
+  const [liveHourly, setLiveHourly] = useState([]);
+  const [liveError, setLiveError] = useState("");
+  const [liveLoading, setLiveLoading] = useState(false);
+
+  useEffect(() => {
+    // Nothing to do until we know which user
+    if (!ProductionAuth?.id) return;
+
+    let cancelled = false;
+
+    const fetchLiveData = async () => {
+      try {
+        setLiveLoading(true);
+        setLiveError("");
+
+        const today = new Date().toISOString().slice(0, 10);
+
+        // 🔹 1) Get today's header for this production user
+        const headerParams = new URLSearchParams({
+          productionUserId: ProductionAuth.id,
+          date: today,
+        });
+
+        const headerRes = await fetch(
+          `/api/production-headers?${headerParams.toString()}`,
+          { cache: "no-store" }
+        );
+        const headerJson = await headerRes.json();
+
+        if (!headerRes.ok || !headerJson.success) {
+          throw new Error(
+            headerJson.message || "Failed to load TV header data"
+          );
+        }
+
+        const headerFromApi = Array.isArray(headerJson.data)
+          ? headerJson.data[0]
+          : headerJson.data;
+
+        if (!headerFromApi) {
+          if (!cancelled) {
+            setLiveHeader(null);
+            setLiveHourly([]);
+          }
+          return;
+        }
+
+        if (!cancelled) {
+          setLiveHeader(headerFromApi);
+        }
+
+        // 🔹 2) Get hourly records for that header + user
+        const hourlyParams = new URLSearchParams({
+          headerId: headerFromApi._id,
+          productionUserId: ProductionAuth.id,
+        });
+
+        const hourlyRes = await fetch(
+          `/api/hourly-productions?${hourlyParams.toString()}`,
+          { cache: "no-store" }
+        );
+        const hourlyJson = await hourlyRes.json();
+
+        if (!hourlyRes.ok || !hourlyJson.success) {
+          throw new Error(
+            hourlyJson.message || "Failed to load TV hourly data"
+          );
+        }
+
+        if (!cancelled) {
+          setLiveHourly(hourlyJson.data || []);
+        }
+      } catch (err) {
+        console.error(err);
+        if (!cancelled) {
+          setLiveError(err.message || "Failed to refresh TV data");
+        }
+      } finally {
+        if (!cancelled) {
+          setLiveLoading(false);
+        }
+      }
+    };
+
+    // Initial fetch
+    fetchLiveData();
+
+    // 🔁 Poll every 3 seconds
+    const intervalId = setInterval(fetchLiveData, 3000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+    };
+  }, [ProductionAuth?.id]);
+
+  /* ---------------- Header for this production user ---------------- */
+
   const activeHeader = useMemo(() => {
+    // 🔹 Prefer live header (today, from API)
+    if (liveHeader) return liveHeader;
+
     if (!ProductionAuth) return null;
     const nameLower = productionName.trim().toLowerCase();
 
@@ -205,15 +309,20 @@ export default function ProductionTvView({
           new Date(b.updatedAt || b.createdAt || 0).getTime() -
           new Date(a.updatedAt || a.createdAt || 0).getTime()
       )[0];
-  }, [ProductionAuth, headerData, productionId, productionName]);
+  }, [liveHeader, ProductionAuth, headerData, productionId, productionName]);
 
   /* ---------------- Hourly records for this header + production user ---------------- */
+
   const hourlyForUser = useMemo(() => {
-    if (!activeHeader || !ProductionAuth) return [];
+    if (!ProductionAuth || !activeHeader) return [];
+
     const headerId = activeHeader._id;
     const nameLower = productionName.trim().toLowerCase();
 
-    const filtered = (hourlyData || []).filter((r) => {
+    // 🔹 Prefer live hourly data from polling; fallback to props
+    const source = liveHourly.length ? liveHourly : hourlyData;
+
+    const filtered = (source || []).filter((r) => {
       const matchHeader =
         r.headerId && String(r.headerId) === String(headerId);
 
@@ -232,9 +341,17 @@ export default function ProductionTvView({
     return filtered
       .slice()
       .sort((a, b) => safeNum(a.hour, 0) - safeNum(b.hour, 0));
-  }, [hourlyData, activeHeader, ProductionAuth, productionId, productionName]);
+  }, [
+    liveHourly,
+    hourlyData,
+    activeHeader,
+    ProductionAuth,
+    productionId,
+    productionName,
+  ]);
 
   /* ---------------- Media (image + video) for this user ---------------- */
+
   const latestMedia = useMemo(() => {
     if (!ProductionAuth) return null;
     const nameLower = productionName.trim().toLowerCase();
@@ -336,7 +453,7 @@ export default function ProductionTvView({
   // Target Qty for the day (from header)
   const dayTarget = safeNum(todayTargetRaw);
 
-  // Achieve Qty: sum of rounded achieved (same as table's "Achieved" column)
+  // Achieve Qty: sum of rounded achieved
   const totalAchieved = useMemo(
     () =>
       recordsDecorated.reduce(
@@ -354,13 +471,13 @@ export default function ProductionTvView({
 
   const currentHour = currentRecord?._hourNum || null;
 
-  // Variance Qty for current hour: Δ Var (hour vs dynamic) = AchievedRounded – DynamicTarget
+  // Variance Qty for current hour: Δ Var (hour vs dynamic)
   const currentVariance = safeNum(currentRecord?._perHourVarDynamic, 0);
 
-  // Hourly Efficiency: from the record (same as Hourly Eff% column)
+  // Hourly Efficiency: from the record
   const currentHourlyEff = safeNum(currentRecord?.hourlyEfficiency, 0);
 
-  // Avg Efficiency: average of achieveEfficiency (same family as table's Achieve Eff column)
+  // Avg Efficiency: average efficiency across hours
   const avgEff = useMemo(() => {
     if (!recordsDecorated.length) return 0;
 
@@ -385,8 +502,7 @@ export default function ProductionTvView({
             Authentication Required
           </div>
           <div className="text-sm text-red-300/80">
-            Please log in as a production user to view the production TV
-            board.
+            Please log in as a production user to view the production TV board.
           </div>
         </div>
       </div>
@@ -396,41 +512,30 @@ export default function ProductionTvView({
   const imageSrc = latestMedia?.imageSrc || "";
   const videoSrc = latestMedia?.videoSrc || "";
 
-  const liveTime = new Date().toLocaleTimeString("en-US", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
-
   return (
     <div className="min-h-screen bg-slate-950">
       <div className="relative mx-auto max-w-7xl p-2 sm:p-3 md:p-4 text-white">
-        {/* Ambient gradient background (same feel as template) */}
+        {/* Ambient gradient background */}
         <div className="pointer-events-none absolute -inset-4 -z-10 bg-[radial-gradient(1200px_600px_at_10%_-10%,rgba(16,185,129,0.15),transparent),radial-gradient(900px_400px_at_100%_0%,rgba(56,189,248,0.15),transparent)]" />
 
-        {/* Top header row
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h1 className="text-lg sm:text-xl font-semibold">
-              Production TV —{" "}
-              <span className="text-emerald-400">{productionName}</span>
-            </h1>
-            <p className="text-xs sm:text-sm text-white/70 mt-0.5">
-              {todayLabel}
-              {currentHour && (
-                <span className="ml-3 text-sky-400">
-                  • Current Hour: H{currentHour}
-                </span>
-              )}
-            </p>
-          </div>
-          <div className="text-right">
-            <div className="text-2xl sm:text-3xl font-bold tabular-nums text-white">
-              {liveTime}
-            </div>
-            <div className="text-[11px] text-white/60 mt-1">Live Time</div>
-          </div>
-        </div> */}
+        {/* Optional live status banner */}
+        <div className="mb-2 flex items-center justify-between text-[11px] text-white/70">
+          <span>
+            {todayLabel}
+            {currentHour && (
+              <span className="ml-3 text-sky-400">
+                • Current Hour: H{currentHour}
+              </span>
+            )}
+          </span>
+          <span>
+            {liveLoading
+              ? "Live updating… (3s)"
+              : liveError
+              ? `Live error: ${liveError}`
+              : "Live • 3s refresh"}
+          </span>
+        </div>
 
         {/* Main Grid: Media + KPIs */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-3 md:gap-4">
@@ -461,7 +566,7 @@ export default function ProductionTvView({
             </MediaTile>
           </section>
 
-          {/* RIGHT: ONLY the 5 KPIs (aligned with WorkingHourCard logic) */}
+          {/* RIGHT: KPIs (uses live data) */}
           <aside className="flex min-h-0 flex-col gap-2.5 sm:gap-3">
             {/* Target + Achieve */}
             <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
@@ -490,7 +595,7 @@ export default function ProductionTvView({
               icon={TrendingUp}
             />
 
-            {/* Hourly Eff + Avg Eff (current hour + avg achieveEfficiency) */}
+            {/* Hourly Eff + Avg Eff */}
             <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
               <KpiTile
                 label="Hourly Eff"
