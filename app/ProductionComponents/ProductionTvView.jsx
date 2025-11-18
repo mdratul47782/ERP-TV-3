@@ -95,31 +95,74 @@ function VarianceMiniBar({ data = [] }) {
     );
   }
 
-  const width = 220;
-  const height = 60;
-  const baseline = height / 2;
-  const maxAbs = Math.max(
-    ...data.map((d) => Math.abs(d.value || 0)),
-    1
-  );
-  const barGap = 4;
+  // 🔹 Slightly responsive width based on number of bars
+  const baseWidth = 220;
+  const width = Math.max(baseWidth, data.length * 18 + 24);
+  const height = 72;
+  const baseline = height * 0.55;
+
+  const maxAbs = Math.max(...data.map((d) => Math.abs(d.value || 0)), 1);
+  const barGap = 6;
   const barWidth = Math.max(
     4,
     (width - barGap * (data.length + 1)) / data.length
   );
 
+  const gridLines = 4;
+
   return (
     <svg
       viewBox={`0 0 ${width} ${height}`}
-      className="w-full h-16 rounded-lg border border-white/10 bg-slate-900/60"
+      className="w-full h-20 rounded-xl border border-white/10 bg-gradient-to-b from-slate-900/90 via-slate-950 to-black/80"
     >
+      <defs>
+        {/* 🔹 Positive bars gradient */}
+        <linearGradient id="variance-bar-positive" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stopColor="#4ade80" />
+          <stop offset="100%" stopColor="#16a34a" />
+        </linearGradient>
+
+        {/* 🔹 Negative bars gradient */}
+        <linearGradient id="variance-bar-negative" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stopColor="#f97373" />
+          <stop offset="100%" stopColor="#b91c1c" />
+        </linearGradient>
+
+        {/* 🔹 Soft shadow for bars */}
+        <filter id="variance-bar-shadow" x="-20%" y="-20%" width="140%" height="140%">
+          <feDropShadow
+            dx="0"
+            dy="1"
+            stdDeviation="1.2"
+            floodColor="rgba(15,23,42,0.65)"
+          />
+        </filter>
+      </defs>
+
+      {/* vertical grid lines */}
+      {Array.from({ length: gridLines }).map((_, idx) => {
+        const x = ((idx + 1) / (gridLines + 1)) * width;
+        return (
+          <line
+            key={`grid-${idx}`}
+            x1={x}
+            x2={x}
+            y1={6}
+            y2={height - 6}
+            stroke="rgba(148,163,184,0.16)"
+            strokeWidth="0.6"
+            strokeDasharray="4 4"
+          />
+        );
+      })}
+
       {/* zero line */}
       <line
         x1="0"
         x2={width}
         y1={baseline}
         y2={baseline}
-        stroke="rgba(148,163,184,0.6)"
+        stroke="rgba(148,163,184,0.8)"
         strokeWidth="1"
         strokeDasharray="3 3"
       />
@@ -127,23 +170,35 @@ function VarianceMiniBar({ data = [] }) {
       {/* bars per hour */}
       {data.map((d, idx) => {
         const v = d.value || 0;
-        const h = (Math.abs(v) / maxAbs) * (height / 2 - 6);
+        const h = (Math.abs(v) / maxAbs) * (height / 2 - 10);
         const x = barGap + idx * (barWidth + barGap);
         const y = v >= 0 ? baseline - h : baseline;
-        const fill = v >= 0 ? "#22c55e" : "#ef4444";
+        const fill =
+          v >= 0 ? "url(#variance-bar-positive)" : "url(#variance-bar-negative)";
 
         return (
-          <rect
-            key={d.hour ?? idx}
-            x={x}
-            y={y}
-            width={barWidth}
-            height={h}
-            rx="2"
-            ry="2"
-            fill={fill}
-            opacity="0.9"
-          />
+          <g key={d.hour ?? idx} filter="url(#variance-bar-shadow)">
+            <rect
+              x={x}
+              y={y}
+              width={barWidth}
+              height={h}
+              rx="3"
+              ry="3"
+              fill={fill}
+              opacity="0.95"
+              style={{
+                transition: "height 220ms ease-out, y 220ms ease-out",
+              }}
+            >
+              {/* 🔹 Native SVG tooltip */}
+              <title>
+                {`H${d.hour ?? idx + 1}: ${
+                  v >= 0 ? "+" : ""
+                }${v.toFixed(0)} vs target`}
+              </title>
+            </rect>
+          </g>
         );
       })}
     </svg>
@@ -255,27 +310,29 @@ function NavKpiTile({
   return (
     <Link href={href} className="group block">
       <div
-        className={`relative overflow-hidden rounded-2xl border ${toneMap.card} bg-gradient-to-br p-3 ring-1 shadow-sm transition-transform duration-200 hover:-translate-y-0.5 hover:ring-2 cursor-pointer`}
+        className={`relative overflow-hidden rounded-2xl border ${toneMap.card} bg-gradient-to-br px-2.5 py-2 ring-1 shadow-sm transition-transform duration-200 hover:-translate-y-0.5 hover:ring-2 cursor-pointer`}
       >
         <div className="pointer-events-none absolute -inset-px rounded-[1.1rem] bg-[radial-gradient(140px_70px_at_0%_0%,rgba(255,255,255,0.18),transparent)]" />
 
-        <div className="relative flex items-center justify-between gap-3">
-          <div className="flex flex-col gap-1">
-            <div className="inline-flex items-center gap-1 rounded-md bg-white/90 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-900">
-              {Icon ? <Icon className="h-3.5 w-3.5" /> : null}
+        <div className="relative flex items-center justify-between gap-2">
+          <div className="flex flex-col gap-0.5">
+            <div className="inline-flex items-center gap-1 rounded-md bg-white/90 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-slate-900">
+              {Icon ? <Icon className="h-3 w-3" /> : null}
               Go to Screen
             </div>
-            <div className="text-sm font-semibold text-white">
+            <div className="text-xs sm:text-sm font-semibold text-white">
               {label}
             </div>
             {description && (
-              <p className="text-[11px] text-white/70">{description}</p>
+              <p className="text-[10px] sm:text-[11px] text-white/70">
+                {description}
+              </p>
             )}
           </div>
 
           <div className="shrink-0">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-slate-950/40 transition-colors group-hover:bg-white group-hover:text-slate-900">
-              <ArrowRightCircle className="h-5 w-5" />
+            <div className="flex h-8 w-8 items-center justify-center rounded-full border border-white/15 bg-slate-950/40 transition-colors group-hover:bg-white group-hover:text-slate-900">
+              <ArrowRightCircle className="h-4 w-4" />
             </div>
           </div>
         </div>
@@ -950,7 +1007,7 @@ export default function ProductionTvView({
               />
             </div>
 
-            {/* Nav KPI tile to /hourlyproduction */}
+            {/* Nav KPI tile to /hourlyproduction (reduced size) */}
             <NavKpiTile
               href="/hourlyproduction"
               label="Hourly Production Screen"
