@@ -195,7 +195,7 @@ function VarianceMiniBar({ data = [] }) {
               <title>
                 {`H${d.hour ?? idx + 1}: ${
                   v >= 0 ? "+" : ""
-                }${v.toFixed(0)} vs target`}
+                }${v.toFixed(0)} net var`}
               </title>
             </rect>
           </g>
@@ -795,6 +795,7 @@ export default function ProductionTvView({
       runningAchieved += achievedRounded;
 
       const baselineToDate = baseTargetPerHour * hourN;
+      // NET VARIANCE: Total Achieved So Far - Total Planned So Far
       const netVarVsBaseToDate = runningAchieved - baselineToDate;
 
       return {
@@ -826,7 +827,10 @@ export default function ProductionTvView({
       : null;
 
   const currentHour = currentRecord?._hourNum || null;
-  const currentVariance = safeNum(currentRecord?._perHourVarDynamic, 0);
+  
+  // UPDATED: Display NET Variance instead of Hourly Variance
+  const currentVariance = safeNum(currentRecord?._netVarVsBaseToDate, 0);
+  
   const currentHourlyEff = safeNum(currentRecord?.hourlyEfficiency, 0);
 
   const avgEff = useMemo(() => {
@@ -844,12 +848,13 @@ export default function ProductionTvView({
     return sum / recordsDecorated.length;
   }, [recordsDecorated]);
 
-  /* ----- variance series for bar chart (H1 → current H) ----- */
+  /* ----- UPDATED: variance series for bar chart (Shows NET Variance trend) ----- */
   const varianceSeries = useMemo(
     () =>
       recordsDecorated.map((rec) => ({
         hour: rec._hourNum,
-        value: safeNum(rec._perHourVarDynamic, 0),
+        // Chart now reflects the accumulated (Net) variance per hour
+        value: safeNum(rec._netVarVsBaseToDate, 0),
       })),
     [recordsDecorated]
   );
@@ -909,7 +914,7 @@ export default function ProductionTvView({
         <div className="pointer-events-none absolute -inset-4 -z-10 bg-[radial-gradient(1200px_600px_at_10%_-10%,rgba(16,185,129,0.15),transparent),radial-gradient(900px_400px_at_100%_0%,rgba(56,189,248,0.15),transparent)]" />
 
         {/* live status */}
-        <div className="mb-2 flex items-center justify-between text-[11px] text-white/70">
+        <div className="mb-2 flex items-center justify-between text-[20px] text-white/70">
           <span>
             {todayLabel}
             {currentHour && (
@@ -972,9 +977,9 @@ export default function ProductionTvView({
               />
             </div>
 
-            {/* Variance with bar chart H1 → current H */}
+            {/* Variance with bar chart H1 → current H (NET VARIANCE) */}
             <KpiBarTile
-              label="Variance Qty"
+              label="Net Variance"
               value={`${
                 currentVariance >= 0 ? "+" : ""
               }${formatNumber(currentVariance, 0)}`}

@@ -716,25 +716,12 @@ export default function WorkingHourCard({ header: initialHeader }) {
             <button
               type="button"
               onClick={handleSave}
-              className="rounded bg-gray-900 px-3 py-1 font-medium text-white hover:bg-gray-800 disabled:opacity-60"
+              className="rounded bg-gray-900 px-4 py-2 font-medium text-white hover:bg-gray-800 disabled:opacity-60"
               disabled={saving}
             >
               {saving ? "Saving..." : "Save Hour"}
             </button>
-            <button
-              type="button"
-              onClick={handleEdit}
-              className="rounded border border-gray-400 px-3 py-1 font-medium text-gray-700 hover:bg-gray-100"
-            >
-              Edit (wire later)
-            </button>
-            <button
-              type="button"
-              onClick={handleDelete}
-              className="rounded border border-red-400 px-3 py-1 font-medium text-red-600 hover:bg-red-50"
-            >
-              Delete (wire later)
-            </button>
+           
           </div>
 
           {/* Posted hourly data */}
@@ -768,7 +755,7 @@ export default function WorkingHourCard({ header: initialHeader }) {
                       </th>
                       <th className="px-2 py-1 text-left">Hourly Eff %</th>
                       <th className="px-2 py-1 text-left">Achieve Eff</th>
-                      <th className="px-2 py-1 text-left">Total Eff %</th>
+                      <th className="px-2 py-1 text-left">AVG Eff %</th>
                       <th className="px-2 py-1 text-left">Updated At</th>
                     </tr>
                   </thead>
