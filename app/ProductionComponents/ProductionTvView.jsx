@@ -792,10 +792,11 @@ export default function ProductionTvView({
       const achievedRounded = Math.round(safeNum(rec.achievedQty, 0));
       const perHourVarDynamic = achievedRounded - dynTarget;
 
-      // 🔹 Hourly Efficiency Calculation
+      // 🔹 Hourly Efficiency Calculation (fallback if backend not present)
       let calculatedHourlyEff = 0;
       if (manpowerPresent > 0) {
-        calculatedHourlyEff = (achievedRounded * smv * 100) / (manpowerPresent * 60);
+        calculatedHourlyEff =
+          (achievedRounded * smv * 100) / (manpowerPresent * 60);
       }
 
       runningAchieved += achievedRounded;
@@ -812,7 +813,7 @@ export default function ProductionTvView({
         _netVarVsBaseToDate: netVarVsBaseToDate,
         _baselineToDatePrev: baselineToDatePrev,
         _cumulativeShortfallVsBasePrev: cumulativeShortfallVsBasePrev,
-        _calculatedHourlyEff: calculatedHourlyEff, 
+        _calculatedHourlyEff: calculatedHourlyEff,
       };
     });
   }, [hourlyForUser, baseTargetPerHour, manpowerPresent, smv]);
@@ -833,20 +834,33 @@ export default function ProductionTvView({
       : null;
 
   const currentHour = currentRecord?._hourNum || null;
-  
-  // 🔹 CHANGED: Use Net Variance (Cumulative vs Base) instead of Per-Hour Variance
-  const currentVariance = safeNum(currentRecord?._netVarVsBaseToDate, 0);
-  
-  const currentHourlyEff = safeNum(currentRecord?._calculatedHourlyEff, 0);
 
+  // 🔹 Net variance vs base (cumulative)
+  const currentVariance = safeNum(currentRecord?._netVarVsBaseToDate, 0);
+
+  // 🔹 Use backend Hourly Eff if present, else fallback to our calculated value
+  const currentHourlyEff = safeNum(
+    currentRecord?.hourlyEfficiency ?? currentRecord?._calculatedHourlyEff,
+    0
+  );
+
+  // 🔹 Use backend Total / Avg Eff from last record so TV = WorkingHourCard "AVG Eff %"
   const avgEff = useMemo(() => {
     if (!recordsDecorated.length) return 0;
 
-    const sum = recordsDecorated.reduce((acc, rec) => {
-      const eff = safeNum(rec._calculatedHourlyEff, 0);
-      return acc + eff;
-    }, 0);
+    const last = recordsDecorated[recordsDecorated.length - 1];
 
+    // Prefer backend's running average (same as table "AVG Eff %")
+    const backendAvg = Number(last?.totalEfficiency);
+    if (Number.isFinite(backendAvg)) {
+      return backendAvg;
+    }
+
+    // Fallback: compute average from calculated hourly efficiencies
+    const sum = recordsDecorated.reduce(
+      (acc, rec) => acc + safeNum(rec._calculatedHourlyEff, 0),
+      0
+    );
     return sum / recordsDecorated.length;
   }, [recordsDecorated]);
 
@@ -862,9 +876,7 @@ export default function ProductionTvView({
 
   /* ----- pies data for Hourly Eff & Avg Eff ----- */
   const hourlyEffPieData = useMemo(() => {
-    // Display value (can be > 100%)
     const rawEff = safeNum(currentHourlyEff, 0);
-    // Visual value (capped at 100 for pie chart drawing logic)
     const visualEff = Math.max(0, Math.min(100, rawEff));
     const visualLoss = 100 - visualEff;
 
@@ -1011,7 +1023,7 @@ export default function ProductionTvView({
               />
             </div>
 
-            {/* Nav KPI tile to /hourlyproduction (reduced size) */}
+            {/* Nav KPI tile to Production Home */}
             <NavKpiTile
               href="/ProductionHomePage"
               label="Production Home Page"

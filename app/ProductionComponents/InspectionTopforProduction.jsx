@@ -1,6 +1,5 @@
 "use client";
 
-import { useAuth } from "../hooks/useAuth";
 import { useMemo } from "react";
 import { useProductionAuth } from "../hooks/useProductionAuth";
 
@@ -41,36 +40,23 @@ export default function InspectionTopInput({
   theme = "dark", // "dark" (glassy gradient) | "light" (white card)
   tone = "sky", // default outer card = sky (blue)
 }) {
-  const { auth } = useAuth();
   const { ProductionAuth } = useProductionAuth();
 
-  // 🔹 Find register row by either auth.user_name or ProductionAuth.Production_user_name
+  // 🔹 Find register row by matching ProductionAuth.Production_user_name with created_by
   const userRegister = useMemo(() => {
-    const authName = auth?.user_name?.trim()?.toLowerCase() || null;
     const prodName =
       ProductionAuth?.Production_user_name?.trim()?.toLowerCase() || null;
 
-    // If neither name exists, nothing to match
-    if (!authName && !prodName) return null;
+    // If no Production_user_name exists, nothing to match
+    if (!prodName) return null;
 
-    // 1️⃣ Try match by auth.user_name first (if present)
-    if (authName) {
-      const byAuth = registerData.find(
-        (r) => r?.created_by?.trim()?.toLowerCase() === authName
-      );
-      if (byAuth) return byAuth;
-    }
+    // Find register data where created_by matches Production_user_name
+    const matchedRegister = registerData.find(
+      (r) => r?.created_by?.trim()?.toLowerCase() === prodName
+    );
 
-    // 2️⃣ Fallback: try match by ProductionAuth.Production_user_name
-    if (prodName) {
-      const byProd = registerData.find(
-        (r) => r?.created_by?.trim()?.toLowerCase() === prodName
-      );
-      if (byProd) return byProd;
-    }
-
-    return null;
-  }, [auth, ProductionAuth, registerData]);
+    return matchedRegister || null;
+  }, [ProductionAuth, registerData]);
 
   const fields = [
     // { label: "Building", value: userRegister?.building, tone: "sky" },
@@ -168,7 +154,7 @@ export default function InspectionTopInput({
         </div>
 
         {/* Status messages */}
-        {!auth && !ProductionAuth && (
+        {!ProductionAuth && (
           <p
             className={
               isLight
@@ -180,7 +166,7 @@ export default function InspectionTopInput({
           </p>
         )}
 
-        {(auth || ProductionAuth) && !userRegister && (
+        {ProductionAuth && !userRegister && (
           <p
             className={
               isLight
@@ -190,9 +176,8 @@ export default function InspectionTopInput({
           >
             No registered line info found for{" "}
             <b className={isLight ? "text-slate-900" : "text-white/90"}>
-              {auth?.user_name || ProductionAuth?.Production_user_name}
+              {ProductionAuth?.Production_user_name}
             </b>
-            .
           </p>
         )}
       </div>
