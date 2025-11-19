@@ -3,8 +3,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import ProductionSignInOut from "../components/auth/ProductionSignInOut";
-import { useProductionAuth } from "../hooks/useProductionAuth";
 import { useAuth } from "../hooks/useAuth";
+import { useProductionAuth } from "../hooks/useProductionAuth";
 
 export default function ProductionInputForm() {
   const { ProductionAuth, loading: productionLoading } = useProductionAuth();
@@ -209,12 +209,7 @@ export default function ProductionInputForm() {
 
     if (!Number.isFinite(target) || target <= 0) return "";
     return Math.round(target);
-  }, [
-    form.manpowerPresent,
-    form.workingHour,
-    form.smv,
-    form.planEfficiency,
-  ]);
+  }, [form.manpowerPresent, form.workingHour, form.smv, form.planEfficiency]);
 
   // 🔹 Save / Update (single submission per date)
   const handleSubmit = async (e) => {
@@ -229,7 +224,9 @@ export default function ProductionInputForm() {
 
     // If already submitted for today, block submitting again
     if (headerId) {
-      setError("Today's production header is already submitted. You cannot submit again today.");
+      setError(
+        "Today's production header is already submitted. You cannot submit again today."
+      );
       return;
     }
 
@@ -310,7 +307,9 @@ export default function ProductionInputForm() {
 
       resetForm();
       setHeaderId(null);
-      setSuccess("Production header deleted successfully. You can submit again for today.");
+      setSuccess(
+        "Production header deleted successfully. You can submit again for today."
+      );
     } catch (err) {
       console.error(err);
       setError(err.message || "Something went wrong while deleting.");
@@ -444,23 +443,23 @@ export default function ProductionInputForm() {
 
         {/* Footer buttons */}
         <div className="flex flex-wrap justify-end gap-2 pt-1">
-          <button
+          {/* <button
             type="button"
             onClick={resetForm}
             className="px-3 py-1.5 rounded-lg text-xs font-medium border border-slate-300 text-slate-700 hover:bg-slate-50"
             disabled={busy}
           >
             Clear
-          </button>
+          </button> */}
 
-          <button
+          {/* <button
             type="button"
             onClick={handleDelete}
             className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-60"
             disabled={busy || !isExisting}
           >
             {deleting ? "Deleting..." : "Delete"}
-          </button>
+          </button> */}
 
           <button
             type="submit"
