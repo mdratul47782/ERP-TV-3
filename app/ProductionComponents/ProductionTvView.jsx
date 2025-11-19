@@ -74,7 +74,7 @@ function KpiTile({ label, value, tone = "emerald", icon: Icon }) {
           {Icon ? <Icon className="h-3.5 w-3.5" /> : null}
           {label}
         </div>
-        <span className="text-[10px] sm:text-xs text-white/70">KPI</span>
+        {/* <span className="text-[10px] sm:text-xs text-white/70">KPI</span> */}
       </div>
 
       <div className="mt-2 text-2xl sm:text-3xl font-extrabold tabular-nums tracking-tight text-white">
@@ -232,7 +232,7 @@ function KpiBarTile({
             {Icon ? <Icon className="h-3.5 w-3.5" /> : null}
             {label}
           </div>
-          <span className="text-[10px] sm:text-xs text-white/70">KPI</span>
+          {/* <span className="text-[10px] sm:text-xs text-white/70">KPI</span> */}
         </div>
 
         {/* Value + range info */}
@@ -278,7 +278,7 @@ function KpiPieTile({
             {Icon ? <Icon className="h-3.5 w-3.5" /> : null}
             {label}
           </div>
-          <span className="text-[10px] sm:text-xs text-white/70">KPI</span>
+          {/* <span className="text-[10px] sm:text-xs text-white/70">KPI</span> */}
         </div>
 
         {/* Pie only (percentage inside the donut) */}
@@ -1027,7 +1027,7 @@ export default function ProductionTvView({
             <NavKpiTile
               href="/ProductionHomePage"
               label="Production Home Page"
-              description="Open Production Home Page and see working hour details."
+              
               tone="sky"
             />
           </aside>
