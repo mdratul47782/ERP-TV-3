@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useAuth } from "@/app/hooks/useAuth";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useAuth } from "@/app/hooks/useAuth";
+import { useEffect, useState } from "react";
 import { useProductionAuth } from "../hooks/useProductionAuth";
-import Image from "next/image";
 
 export default function NavBar() {
   const pathname = usePathname() || "/";
@@ -181,7 +181,7 @@ export default function NavBar() {
               aria-label="HKD Home"
             >
               <Image
-                src="/ChatGPT Image Nov 14, 2025, 08_47_05 PM.png"
+                src="/HKD_LOGO.png"
                 alt="HKD Outdoor Innovations Ltd. Logo"
                 width={30}
                 height={30}

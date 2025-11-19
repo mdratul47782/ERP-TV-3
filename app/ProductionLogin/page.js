@@ -11,7 +11,7 @@ export default function ProductionLogin(){
         {/* Logo */}
         <div className="flex flex-col items-center mb-6">
           <Image
-            src="/ChatGPT Image Nov 14, 2025, 08_47_05 PM.png"
+            src="/HKD_LOGO.png"
             alt="HKD Outdoor Innovations Ltd. Logo"
             width={80}
             height={80}

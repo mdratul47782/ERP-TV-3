@@ -7,10 +7,8 @@ import { useMemo } from "react";
 const toneCardMap = {
   emerald:
     "from-emerald-500/15 to-emerald-500/5 border-emerald-400/30 ring-emerald-400/40 text-emerald-100",
-  sky:
-    "from-sky-500/15 to-sky-500/5 border-sky-400/30 ring-sky-400/40 text-sky-100",
-  red:
-    "from-red-500/15 to-red-500/5 border-red-400/30 ring-red-400/40 text-red-100",
+  sky: "from-sky-500/15 to-sky-500/5 border-sky-400/30 ring-sky-400/40 text-sky-100",
+  red: "from-red-500/15 to-red-500/5 border-red-400/30 ring-red-400/40 text-red-100",
   amber:
     "from-amber-500/15 to-amber-500/5 border-amber-400/30 ring-amber-400/40 text-amber-100",
 };
@@ -24,8 +22,7 @@ const chipToneMap = {
     "from-violet-500/20 to-violet-500/5 border-violet-400/40 ring-violet-400/40",
   amber:
     "from-amber-500/20 to-amber-500/5 border-amber-400/40 ring-amber-400/40",
-  rose:
-    "from-rose-500/20 to-rose-500/5 border-rose-400/40 ring-rose-400/40",
+  rose: "from-rose-500/20 to-rose-500/5 border-rose-400/40 ring-rose-400/40",
   cyan: "from-cyan-500/20 to-cyan-500/5 border-cyan-400/40 ring-cyan-400/40",
   fuchsia:
     "from-fuchsia-500/20 to-fuchsia-500/5 border-fuchsia-400/40 ring-fuchsia-400/40",

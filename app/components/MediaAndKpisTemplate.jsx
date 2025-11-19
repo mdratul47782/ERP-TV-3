@@ -72,7 +72,7 @@ function KpiTile({ label, value, tone = "emerald", icon: Icon }) {
           {Icon ? <Icon className="h-3.5 w-3.5" /> : null}
           {label}
         </div>
-        <span className="text-[10px] sm:text-xs text-white/70">KPI</span>
+        <span className="text-[10px] sm:text-xs text-white/70"></span>
       </div>
 
       <div className="mt-2 text-2xl sm:text-3xl font-extrabold tabular-nums tracking-tight text-white">
