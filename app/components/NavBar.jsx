@@ -328,12 +328,12 @@ export default function NavBar() {
                 >
                   Home
                 </Link>
-                <Link
+                {/* <Link
                   href={PATHS.productionHourlyView}
                   className={itemClass(isActive(PATHS.productionHourlyView))}
                 >
                   Hourly View
-                </Link>
+                </Link> */}
                 <Link
                   href={PATHS.productionSummary}
                   className={itemClass(isActive(PATHS.productionSummary))}

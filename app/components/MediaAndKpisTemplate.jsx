@@ -171,7 +171,7 @@ function DefectsPie({ defects, size = 150, thickness = 16 }) {
   const norm = normalizeDefects(defects, 3);
   const total = norm.reduce((a, b) => a + b.value, 0);
 
-  const COLORS = ["#FF0000", "#f59e0b", "#4B0082"]; // rose, amber, sky
+  const COLORS = ["#FF0000", "#f59e0b", "#4B0082"]; // red, amber, indigo
   const r = (size - thickness) / 2;
   const c = 2 * Math.PI * r;
 
@@ -215,15 +215,35 @@ function DefectsPie({ defects, size = 150, thickness = 16 }) {
         </g>
       </svg>
 
-      {/* center total */}
-      <div className="pointer-events-none absolute grid place-items-center text-center">
-        <div className="text-[12px] uppercase tracking-wider text-white/60">
+      {/* center total + tiny pieces for each top defect */}
+      <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
+        <div className="text-[11px] uppercase tracking-wider text-white/60">
           <div>Top Defect&apos;s</div>
-          
         </div>
-        <div className="text-4xl font-extrabold tabular-nums text-white">
-          {total}
+        <div className="mt-0.5 text-3xl sm:text-4xl font-extrabold tabular-nums text-white">
+          {total}{" "}
+          <span className="text-[9px] sm:text-[10px] font-semibold text-white/70 uppercase tracking-wide">
+            pcs
+          </span>
         </div>
+        {norm.length > 0 && (
+          <div className="mt-1.5 flex flex-wrap items-center justify-center gap-1">
+            {norm.slice(0, 3).map((s, i) => (
+              <div
+                key={i}
+                className="flex items-center gap-1 rounded-full bg-black/50 px-1.5 py-0.5"
+              >
+                <span
+                  className="h-2 w-2 rounded-full"
+                  style={{ backgroundColor: COLORS[i % COLORS.length] }}
+                />
+                <span className="text-[9px] tabular-nums text-white/90">
+                  {s.value}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* legend */}
@@ -349,6 +369,23 @@ export default function MediaAndKpisTemplate({
   const [drag, setDrag] = useState(null);
   // null | { mode: "draw", startX, startY, cx, cy, r }
   //      | { mode: "move", index, offsetX, offsetY }
+
+  // 🔹 Live date/time header (3s refresh)
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 3000);
+    return () => clearInterval(id);
+  }, []);
+
+  const formattedDate = useMemo(() => {
+    return now.toLocaleDateString("en-US", {
+      weekday: "short",
+      month: "short",
+      day: "2-digit",
+      year: "numeric",
+    });
+  }, [now]);
 
   const finalImageSrc = useMemo(() => imageSrc || "", [imageSrc]);
 
@@ -673,129 +710,134 @@ export default function MediaAndKpisTemplate({
         {/* RIGHT: KPIs */}
         <aside className="flex min-h-0 flex-col gap-2.5 sm:gap-3">
           {/* Defects card */}
-          {/* Defects card */}
-<div
-  className="group relative flex flex-1 flex-col overflow-hidden
+          <div
+            className="group relative flex flex-1 flex-col overflow-hidden
              rounded-2xl border bg-gradient-to-br
              from-red-500/20 via-rose-500/10 to-slate-950/80
              border-red-400/60 p-3 sm:p-4 ring-1 ring-red-400/60 shadow-sm
              transition-transform duration-200 hover:translate-y-0.5"
->
-  {/* KPI-style corner glow */}
-  <div className="pointer-events-none absolute -inset-px rounded-[1.1rem]
-                  bg-[radial-gradient(140px_70px_at_0%_0%,rgba(255,255,255,0.22),transparent)]" />
+          >
+            {/* KPI-style corner glow */}
+            <div
+              className="pointer-events-none absolute -inset-px rounded-[1.1rem]
+                  bg-[radial-gradient(140px_70px_at_0%_0%,rgba(255,255,255,0.22),transparent)]"
+            />
 
-  <div className="relative flex h-full flex-col text-white">
-    {/* header */}
-    <div className="mb-2 flex items-center justify-between gap-2">
-      <div className="inline-flex items-center gap-2">
-        <div className="grid h-8 w-8 place-items-center rounded-xl
-                        bg-red-600/30 ring-1 ring-red-300/70">
-          <Gauge className="h-4 w-4 text-white" />
-        </div>
-        <div>
-          <div
-            className="inline-flex items-center gap-1 rounded-md
+            <div className="relative flex h-full flex-col text-white">
+              {/* header */}
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <div className="inline-flex items-center gap-2">
+                  <div
+                    className="grid h-8 w-8 place-items-center rounded-xl
+                        bg-red-600/30 ring-1 ring-red-300/70"
+                  >
+                    <Gauge className="h-4 w-4 text-white" />
+                  </div>
+                  <div>
+                    <div
+                      className="inline-flex items-center gap-1 rounded-md
                        bg-red-600 px-2 py-0.5 text-[10px]
                        font-semibold uppercase tracking-wider text-white"
-          >
-            Top 3 Defect&apos;s
-          </div>
-          <div className="mt-0.5 text-[10px] text-red-50/90">
-            Most frequent:{" "}
-            <span className="font-semibold text-white">
-              {list?.[0]?.label ?? "—"}
-            </span>
-          </div>
-        </div>
-      </div>
-      <div
-        className="rounded-md bg-red-600/40 px-3 py-0.5
-                   text-[15px] text-white ring-1 ring-red-300/70"
-      >
-        {new Date().toLocaleTimeString()}
-      </div>
-    </div>
+                    >
+                      Top 3 Defect&apos;s
+                    </div>
+                    <div className="mt-0.5 text-[10px] text-red-50/90">
+                      Most frequent:{" "}
+                      <span className="font-semibold text-white">
+                        {list?.[0]?.label ?? "—"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <div
+                  className="rounded-md bg-red-600/40 px-2.5 py-1
+                   text-[9px] sm:text-[10px] text-white ring-1 ring-red-300/70
+                   flex flex-col items-end leading-tight"
+                >
+                  <span className="font-medium">{formattedDate}</span>
+                  <span className="font-semibold uppercase tracking-wide text-white">
+                    Live Refresh • 3s
+                  </span>
+                </div>
+              </div>
 
-    {/* List + Pie */}
-    <div className="grid h-full grid-cols-1 gap-3 sm:grid-cols-2">
-  {/* LEFT: top 3 list – vertically centered */}
-  <div className="flex h-full items-center">
-    <ol className="w-full space-y-1 pr-1 text-[13px] sm:text-sm font-thin">
-      {list.map((d, i) => {
-        const COLORS = ["#FF0000", "#f59e0b", "#4B0082"]; // red, amber, indigo
-        const color = COLORS[i % COLORS.length];
-        const top = list?.[0]?.value || 1;
-        const rel = Math.max(
-          0,
-          Math.min(100, top ? (d.value / top) * 100 : 0)
-        );
+              {/* List + Pie */}
+              <div className="grid h-full grid-cols-1 gap-3 sm:grid-cols-2">
+                {/* LEFT: top 3 list – vertically centered */}
+                <div className="flex h-full items-center">
+                  <ol className="w-full space-y-1 pr-1 text-[13px] sm:text-sm font-thin">
+                    {list.map((d, i) => {
+                      const COLORS = ["#FF0000", "#f59e0b", "#4B0082"]; // red, amber, indigo
+                      const color = COLORS[i % COLORS.length];
+                      const top = list?.[0]?.value || 1;
+                      const rel = Math.max(
+                        0,
+                        Math.min(100, top ? (d.value / top) * 100 : 0)
+                      );
 
-        return (
-          <li
-            key={i}
-            className="relative flex items-center gap-2 overflow-hidden
+                      return (
+                        <li
+                          key={i}
+                          className="relative flex items-center gap-2 overflow-hidden
                        rounded-md border border-red-300/40
                        bg-white/5 px-2 py-1.5 sm:py-1
                        shadow-sm ring-1 ring-red-400/30
                        transition hover:bg-white/10"
-          >
-            {/* colored bar background (relative to top defect) */}
-            <div
-              className="absolute inset-y-0 left-0 rounded-r-md"
-              style={{
-                width: `${rel}%`,
-                backgroundColor: color,
-                opacity: 0.28, // visible but not too strong
-              }}
-            />
+                        >
+                          {/* colored bar background (relative to top defect) */}
+                          <div
+                            className="absolute inset-y-0 left-0 rounded-r-md"
+                            style={{
+                              width: `${rel}%`,
+                              backgroundColor: color,
+                              opacity: 0.28, // visible but not too strong
+                            }}
+                          />
 
-            {/* rank badge */}
-            <span
-              className="relative z-10 inline-flex h-6 w-6 shrink-0
+                          {/* rank badge */}
+                          <span
+                            className="relative z-10 inline-flex h-6 w-6 shrink-0
                          items-center justify-center rounded-sm
                          text-[11px] font-extrabold"
-              style={{ backgroundColor: color, color: "black" }}
-            >
-              {String(i + 1).padStart(2, "0")}
-            </span>
+                            style={{ backgroundColor: color, color: "black" }}
+                          >
+                            {String(i + 1).padStart(2, "0")}
+                          </span>
 
-            {/* defect name – truncated to fit in the row */}
-            <span
-              className="relative z-10 flex-1 truncate text-white"
-              title={d.label} // show full name on hover
-            >
-              {d.label}
-            </span>
+                          {/* defect name – truncated to fit in the row */}
+                          <span
+                            className="relative z-10 flex-1 truncate text-white"
+                            title={d.label} // show full name on hover
+                          >
+                            {d.label}
+                          </span>
 
-            {/* count only */}
-            <span
-              className="relative z-10 ml-2 tabular-nums text-xs font-semibold"
-              style={{ color }}
-            >
-              {d.value}
-            </span>
-          </li>
-        );
-      })}
-    </ol>
-  </div>
+                          {/* count only */}
+                          <span
+                            className="relative z-10 ml-2 tabular-nums text-xs font-semibold"
+                            style={{ color }}
+                          >
+                            {d.value}
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ol>
+                </div>
 
-  {/* RIGHT: pie chart – keeps percentages in legend */}
-  <div className="grid place-items-center">
-    <div
-      className="rounded-xl border border-white/15
+                {/* RIGHT: pie chart – keeps percentages in legend */}
+                <div className="grid place-items-center">
+                  <div
+                    className="rounded-xl border border-white/15
                  bg-slate-950/80 p-2
                  ring-1 ring-red-400/40 shadow-sm"
-    >
-      <DefectsPie defects={list} size={150} thickness={16} />
-    </div>
-  </div>
-</div>
-
-  </div>
-</div>
-
+                  >
+                    <DefectsPie defects={list} size={150} thickness={16} />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
 
           {/* compact KPI rows */}
           <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
