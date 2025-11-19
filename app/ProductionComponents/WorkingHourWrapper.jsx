@@ -1,13 +1,26 @@
 // app/ProductionComponents/WorkingHourWrapper.jsx
 "use client";
 
-import { Suspense } from "react";
+import { Suspense, useEffect } from "react";
 import WorkingHourCard from "./WorkingHourCard";
 
-export default function WorkingHourWrapper({ initialHeader }) {
+export default function WorkingHourWrapper({ initialHeader, hourlyData }) {
+  // Optional: keep logs here too
+  useEffect(() => {
+    // eslint-disable-next-line no-console
+    console.log("✅ WorkingHourWrapper: hourlyData (full)", hourlyData);
+    try {
+      if (Array.isArray(hourlyData) && hourlyData.length > 0) {
+        // eslint-disable-next-line no-console
+        console.table(hourlyData);
+      }
+    } catch {}
+  }, [hourlyData]);
+
   return (
     <Suspense fallback={<LoadingSkeleton />}>
-      <WorkingHourCard header={initialHeader} />
+      {/* 🔹 Pass hourlyData down to WorkingHourCard */}
+      <WorkingHourCard header={initialHeader} hourlyData={hourlyData} />
     </Suspense>
   );
 }

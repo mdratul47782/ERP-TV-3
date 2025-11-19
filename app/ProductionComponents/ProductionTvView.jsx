@@ -1027,7 +1027,7 @@ export default function ProductionTvView({
             <NavKpiTile
               href="/ProductionHomePage"
               label="Production Home Page"
-              
+              description="Open Production Home Page and see working hour details."
               tone="sky"
             />
           </aside>
