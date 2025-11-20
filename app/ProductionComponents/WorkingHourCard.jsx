@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useProductionAuth } from "../hooks/useProductionAuth";
 import MonthlyEfficiencyChart from "./MonthlyEfficiencyChart";
 // 🔹 Pretty number formatter
@@ -14,6 +14,31 @@ function formatNumber(value, digits = 2) {
 function toNum(v, fallback = 0) {
   const n = Number(v);
   return Number.isFinite(n) ? n : fallback;
+}
+
+// 🔹 Match a record's productionUser with the logged-in ProductionAuth
+function sameProductionUser(recordUser, auth) {
+  if (!recordUser || !auth) return false;
+
+  const recId = recordUser.id || recordUser._id;
+  const authId = auth.id || auth._id;
+
+  const recName = (
+    recordUser.Production_user_name ||
+    recordUser.user_name ||
+    ""
+  )
+    .trim()
+    .toLowerCase();
+
+  const authName = (auth.Production_user_name || auth.user_name || "")
+    .trim()
+    .toLowerCase();
+
+  const idMatch = recId && authId && String(recId) === String(authId);
+  const nameMatch = recName && authName && recName === authName;
+
+  return idMatch || nameMatch;
 }
 
 export default function WorkingHourCard({ header: initialHeader ,hourlyData = [], }) {
@@ -55,6 +80,29 @@ export default function WorkingHourCard({ header: initialHeader ,hourlyData = []
   const [message, setMessage] = useState("");
   const [latestDynamicFromServer, setLatestDynamicFromServer] = useState(null);
   const [headerLoading, setHeaderLoading] = useState(false);
+
+  // 🔹 Hourly data filtered for this header + user (prefill from SSR data)
+  const hydratedHourlyFromProps = useMemo(() => {
+    if (!ProductionAuth || !h?._id || !Array.isArray(hourlyData)) return [];
+
+    return hourlyData
+      .filter((rec) =>
+        sameProductionUser(rec.productionUser, ProductionAuth)
+      )
+      .filter((rec) => String(rec.headerId) === String(h._id))
+      .map((rec) => ({ ...rec, _hourNum: Number(rec.hour) }))
+      .filter((rec) => Number.isFinite(rec._hourNum))
+      .sort((a, b) => a._hourNum - b._hourNum);
+  }, [ProductionAuth, h?._id, hourlyData]);
+
+  // 🔹 Use SSR hourly data as initial view while API fetches
+  useEffect(() => {
+    if (!hydratedHourlyFromProps.length) return;
+
+    setHourlyRecords(hydratedHourlyFromProps);
+    const last = hydratedHourlyFromProps[hydratedHourlyFromProps.length - 1];
+    setLatestDynamicFromServer(last.dynamicTarget ?? null);
+  }, [hydratedHourlyFromProps]);
 
   // ─────────────────────────────────────────────────────────────────────────────
   // 🔹 Auto-refresh header data for selected date every 3s (per production user)
@@ -820,6 +868,12 @@ export default function WorkingHourCard({ header: initialHeader ,hourlyData = []
               </div>
             )}
           </div>
+
+          {/* Monthly efficiency history (matches AVG Eff % from table) */}
+          <MonthlyEfficiencyChart
+            allHourly={hourlyData}
+            auth={ProductionAuth}
+          />
         </>
       )}
     </div>

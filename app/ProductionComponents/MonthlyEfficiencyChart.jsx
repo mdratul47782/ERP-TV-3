@@ -68,7 +68,7 @@ function sameProductionUser(recordUser, auth) {
 function MonthlyEfficiencyChart({ allHourly = [], auth }) {
   // 🔹 For each date:
   //   -> find last hourly record (max hour / latest updatedAt)
-  //   -> use rec.totalEfficiency from that record
+  //   -> use rec.totalEfficiency from that record (or derived running avg)
   const chartData = useMemo(() => {
     if (!Array.isArray(allHourly) || !auth) return [];
 
@@ -79,7 +79,7 @@ function MonthlyEfficiencyChart({ allHourly = [], auth }) {
     const startKey = start.toISOString().slice(0, 10);
     const endKey = today.toISOString().slice(0, 10);
 
-    // Map<dateKey, { hour: number, updatedAt: number, eff: number }>
+    // Map<dateKey, { records: Array<{ hour, updatedAt, totalEfficiency, achieveEfficiency }> }>
     const buckets = new Map();
 
     for (const rec of allHourly) {
@@ -100,33 +100,67 @@ function MonthlyEfficiencyChart({ allHourly = [], auth }) {
       // keep within last 30 days
       if (dayKey < startKey || dayKey > endKey) continue;
 
-      // 3) Take "AVG Eff %" from DB – you store it as totalEfficiency
-      const eff = toNum(rec.totalEfficiency, NaN);
-      if (!Number.isFinite(eff)) continue;
-
       const hourNum = Number(rec.hour) || 0;
       const updatedMs = rec.updatedAt ? new Date(rec.updatedAt).getTime() : 0;
+      const totalEfficiency = toNum(rec.totalEfficiency, NaN);
+      const achieveEfficiency = toNum(rec.achieveEfficiency, NaN);
 
-      const existing = buckets.get(dayKey);
-
-      // If no record for this day yet, or this hour is later, or same hour but newer update, replace it
-      if (
-        !existing ||
-        hourNum > existing.hour ||
-        (hourNum === existing.hour && updatedMs > existing.updatedAt)
-      ) {
-        buckets.set(dayKey, { hour: hourNum, updatedAt: updatedMs, eff });
-      }
+      const bucket = buckets.get(dayKey) || { records: [] };
+      bucket.records.push({
+        hour: hourNum,
+        updatedAt: updatedMs,
+        totalEfficiency,
+        achieveEfficiency,
+      });
+      buckets.set(dayKey, bucket);
     }
 
     // Convert to sorted array for Recharts
     const rows = Array.from(buckets.entries())
-      .sort(([d1], [d2]) => d1.localeCompare(d2))
-      .map(([dayKey, { eff }]) => ({
-        date: dayKey,
-        label: dayKey.slice(5), // show "MM-DD"
-        avgEfficiency: eff, // 🔹 this is your final daily AVG Eff %
-      }));
+      .map(([dayKey, { records }]) => {
+        // Sort by hour then timestamp to find latest entry for that day
+        const sorted = records
+          .slice()
+          .sort((a, b) => a.hour - b.hour || a.updatedAt - b.updatedAt);
+
+        let sumAchieveEff = 0;
+        let achieveCount = 0;
+        let finalAvg = 0;
+        let finalHour = -Infinity;
+        let finalUpdated = -Infinity;
+
+        for (const rec of sorted) {
+          if (Number.isFinite(rec.achieveEfficiency)) {
+            sumAchieveEff += rec.achieveEfficiency;
+            achieveCount += 1;
+          }
+
+          const derivedAvg =
+            achieveCount > 0 ? sumAchieveEff / achieveCount : 0;
+          const candidateAvg = Number.isFinite(rec.totalEfficiency)
+            ? rec.totalEfficiency
+            : derivedAvg;
+
+          if (
+            rec.hour > finalHour ||
+            (rec.hour === finalHour && rec.updatedAt > finalUpdated)
+          ) {
+            finalAvg = candidateAvg;
+            finalHour = rec.hour;
+            finalUpdated = rec.updatedAt;
+          }
+        }
+
+        if (!Number.isFinite(finalAvg)) return null;
+
+        return {
+          date: dayKey,
+          label: dayKey.slice(5), // show "MM-DD"
+          avgEfficiency: finalAvg, // 🔹 final daily AVG Eff % (matches table)
+        };
+      })
+      .filter(Boolean)
+      .sort(([d1], [d2]) => d1.localeCompare(d2));
 
     return rows;
   }, [allHourly, auth]);
