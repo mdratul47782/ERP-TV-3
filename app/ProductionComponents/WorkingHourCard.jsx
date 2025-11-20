@@ -43,7 +43,8 @@ export default function WorkingHourCard({ header: initialHeader }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
-  const [latestDynamicFromServer, setLatestDynamicFromServer] = useState(null);
+  const [latestDynamicFromServer, setLatestDynamicFromServer] =
+    useState(null);
   const [headerLoading, setHeaderLoading] = useState(false);
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -171,7 +172,8 @@ export default function WorkingHourCard({ header: initialHeader }) {
   const targetFromTodayTarget =
     totalWorkingHours > 0 ? todayTarget / totalWorkingHours : 0;
 
-  const baseTargetPerHourRaw = targetFromCapacity || targetFromTodayTarget || 0;
+  const baseTargetPerHourRaw =
+    targetFromCapacity || targetFromTodayTarget || 0;
   const baseTargetPerHour = Math.round(baseTargetPerHourRaw); // e.g., 12.75 → 13
 
   // 🔹 Achieved qty for this hour – ROUND before all calculations
@@ -185,58 +187,52 @@ export default function WorkingHourCard({ header: initialHeader }) {
 
   const achieveEfficiency =
     manpowerPresent > 0 && smv > 0
-      ? (achievedThisHour * smv * selectedHour) / (manpowerPresent * 60)
+      ? (achievedThisHour * smv * selectedHour) /
+        (manpowerPresent * 60)
       : 0;
 
   const selectedHourInt = Number(selectedHour) || 1;
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // 🔹 DECORATION using GARMENTS RULE **FIXED: dynamic uses hourly variance**
+  // 🔹 DECORATION using GARMENTS RULE
   // ─────────────────────────────────────────────────────────────────────────────
-
   const recordsSorted = hourlyRecords
     .map((rec) => ({ ...rec, _hourNum: Number(rec.hour) }))
     .filter((rec) => Number.isFinite(rec._hourNum))
     .sort((a, b) => a._hourNum - b._hourNum);
 
-  let runningAchieved = 0;      // Σ achieved up to current row (for base net var)
-  let cumulativeDynVar = 0;     // Σ (hourly variance vs dynamic) up to previous row
+  let runningAchieved = 0; // Σ achieved (rounded) up to current row
 
-  const recordsDecorated = [];
-
-  for (const rec of recordsSorted) {
+  const recordsDecorated = recordsSorted.map((rec) => {
     const hourN = rec._hourNum;
 
-    // 🔹 Baseline (for info: net variance vs BASE)
+    // Cumulative baseline & achieved BEFORE this hour (h-1)
     const baselineToDatePrev = baseTargetPerHour * (hourN - 1);
     const cumulativeShortfallVsBasePrev = Math.max(
       0,
       baselineToDatePrev - runningAchieved
     );
 
-    // 🔹 NEW: Dynamic carry = total negative hourly variance so far
-    //     carryPrev = max(0, - Σ varDynamic(previous hours))
-    const dynamicCarryPrev = Math.max(0, -cumulativeDynVar);
+    // Dynamic target for THIS hour
+    const dynTarget =
+      baseTargetPerHour + cumulativeShortfallVsBasePrev;
 
-    // 🔹 Dynamic target for THIS hour (what you want):
-    //     base + (previous negative variance)
-    const dynTarget = baseTargetPerHour + dynamicCarryPrev;
+    // Rounded achieved for this hour
+    const achievedRounded = Math.round(
+      toNum(rec.achievedQty, 0)
+    );
 
-    // Rounded achieved
-    const achievedRounded = Math.round(toNum(rec.achievedQty, 0));
-
-    // 🔹 Hour variance vs dynamic for this row
+    // Δ vs dynamic (this row)
     const perHourVarDynamic = achievedRounded - dynTarget;
 
-    // Update accumulators
+    // Advance cumulative achieved (AFTER this hour)
     runningAchieved += achievedRounded;
-    cumulativeDynVar += perHourVarDynamic;
 
-    // Net variance vs BASE to date
+    // Net variance vs BASE to date (this hour)
     const baselineToDate = baseTargetPerHour * hourN;
     const netVarVsBaseToDate = runningAchieved - baselineToDate;
 
-    recordsDecorated.push({
+    return {
       ...rec,
       _hourNum: hourN,
       _dynTargetRounded: Math.round(dynTarget),
@@ -245,16 +241,15 @@ export default function WorkingHourCard({ header: initialHeader }) {
       _netVarVsBaseToDate: netVarVsBaseToDate,
       _baselineToDatePrev: baselineToDatePrev,
       _cumulativeShortfallVsBasePrev: cumulativeShortfallVsBasePrev,
-      _dynamicCarryPrev: dynamicCarryPrev, // just for debugging if needed
-    });
-  }
+    };
+  });
 
   // 🔹 Previous (posted) records strictly before the selected hour
   const previousDecorated = recordsDecorated.filter(
     (rec) => rec._hourNum < selectedHourInt
   );
 
-  // 🔹 For info: shortfall vs BASE up to previous hour (unchanged)
+  // 🔹 Compute CURRENT hour dynamic = base + shortfall vs BASE up to (h-1)
   const achievedToDatePrev = previousDecorated.reduce(
     (sum, rec) => sum + (rec._achievedRounded ?? 0),
     0
@@ -266,20 +261,9 @@ export default function WorkingHourCard({ header: initialHeader }) {
     baselineToDatePrevForSelected - achievedToDatePrev
   );
 
-  // 🔹 NEW: carry from hourly dynamic variance (prev hours only)
-  const cumulativeVarianceDynamicPrev = previousDecorated.reduce(
-    (sum, rec) => sum + (rec._perHourVarDynamic ?? 0),
-    0
-  );
-  const dynamicCarryPrevForSelected = Math.max(
-    0,
-    -cumulativeVarianceDynamicPrev
-  );
-
-  // 🔹 FIXED: Dynamic target for CURRENT hour input
-  //     base + carry from negative hourly variance
   const dynamicTargetThisHour = Math.round(
-    baseTargetPerHour + dynamicCarryPrevForSelected
+    baseTargetPerHour +
+      cumulativeShortfallVsBasePrevForSelected
   );
 
   // 🔹 Informational: Δ vs dynamic of the immediate previous row
@@ -291,16 +275,23 @@ export default function WorkingHourCard({ header: initialHeader }) {
     ? previousRecord._perHourVarDynamic
     : 0;
 
+  // 🔹 Informational: cumulative Δ vs dynamic (previous rows) — not used for target
+  const cumulativeVarianceDynamicPrev = previousDecorated.reduce(
+    (sum, rec) => sum + (rec._perHourVarDynamic ?? 0),
+    0
+  );
+
   // 🔹 Net variance vs BASE to date for the selected hour (remains correct)
   const achievedToDatePosted = recordsDecorated
     .filter((rec) => rec._hourNum <= selectedHourInt)
-    .reduce((sum, rec) => sum + (rec._achievedRounded ?? 0), 0);
-  const baselineToDateSelected = baseTargetPerHour * selectedHourInt;
+    .reduce(
+      (sum, rec) => sum + (rec._achievedRounded ?? 0),
+      0
+    );
+  const baselineToDateSelected =
+    baseTargetPerHour * selectedHourInt;
   const netVarVsBaseToDateSelected =
     achievedToDatePosted - baselineToDateSelected;
-
-  // 🔹 Cumulative variance vs dynamic (previous hours) – for display only
-  const cumulativeVarianceDynamicPrevDisplay = cumulativeVarianceDynamicPrev;
 
   // 🔹 Auth match
   const headerProdName =
@@ -310,7 +301,8 @@ export default function WorkingHourCard({ header: initialHeader }) {
   const isMatched =
     headerProdName &&
     authProdName &&
-    headerProdName.toLowerCase() === authProdName.toLowerCase();
+    headerProdName.toLowerCase() ===
+      authProdName.toLowerCase();
 
   // ─────────────────────────────────────────────────────────────────────────────
   // 🔹 Rendering guards
@@ -374,12 +366,19 @@ export default function WorkingHourCard({ header: initialHeader }) {
         (rec) => Number(rec.hour) === hourNum
       );
       if (existingRecord) {
-        setError(`You already saved data for hour ${hourNum}.`);
+        setError(
+          `You already saved data for hour ${hourNum}.`
+        );
         return;
       }
 
-      if (!Number.isFinite(achievedThisHour) || achievedThisHour < 0) {
-        throw new Error("Please enter a valid achieved qty for this hour");
+      if (
+        !Number.isFinite(achievedThisHour) ||
+        achievedThisHour < 0
+      ) {
+        throw new Error(
+          "Please enter a valid achieved qty for this hour"
+        );
       }
 
       setSaving(true);
@@ -388,10 +387,11 @@ export default function WorkingHourCard({ header: initialHeader }) {
         headerId: h._id,
         hour: hourNum,
         achievedQty: achievedThisHour, // 🔹 rounded
-        dynamicTarget: dynamicTargetThisHour, // 🔹 now uses hourly var carry
+        dynamicTarget: dynamicTargetThisHour, // 🔹 base + cumulative shortfall vs base
         productionUser: {
           id: ProductionAuth.id,
-          Production_user_name: ProductionAuth.Production_user_name,
+          Production_user_name:
+            ProductionAuth.Production_user_name,
           phone: ProductionAuth.phone,
           bio: ProductionAuth.bio,
         },
@@ -488,11 +488,15 @@ export default function WorkingHourCard({ header: initialHeader }) {
           {h && (
             <>
               <div>
-                <span className="font-medium">Production User:</span>{" "}
+                <span className="font-medium">
+                  Production User:
+                </span>{" "}
                 {h?.productionUser?.Production_user_name ?? ""}
               </div>
               <div>
-                <span className="font-medium">Planned Working Hours:</span>{" "}
+                <span className="font-medium">
+                  Planned Working Hours:
+                </span>{" "}
                 {totalWorkingHours}
               </div>
             </>
@@ -615,7 +619,10 @@ export default function WorkingHourCard({ header: initialHeader }) {
                       : "text-red-700"
                   }`}
                 >
-                  {formatNumber(netVarVsBaseToDateSelected, 0)}
+                  {formatNumber(
+                    netVarVsBaseToDateSelected,
+                    0
+                  )}
                 </span>
               </div>
 
@@ -626,12 +633,15 @@ export default function WorkingHourCard({ header: initialHeader }) {
                 </span>{" "}
                 <span
                   className={`font-semibold ${
-                    cumulativeVarianceDynamicPrevDisplay >= 0
+                    cumulativeVarianceDynamicPrev >= 0
                       ? "text-green-700"
                       : "text-red-700"
                   }`}
                 >
-                  {formatNumber(cumulativeVarianceDynamicPrevDisplay, 0)}
+                  {formatNumber(
+                    cumulativeVarianceDynamicPrev,
+                    0
+                  )}
                 </span>
               </div>
             </div>
@@ -720,10 +730,13 @@ export default function WorkingHourCard({ header: initialHeader }) {
 
                   <td className="px-2 py-2 align-top">
                     <div className="rounded border bg-amber-50 px-2 py-1">
-                      {formatNumber(dynamicTargetThisHour, 0)}
+                      {formatNumber(
+                        dynamicTargetThisHour,
+                        0
+                      )}
                     </div>
                     <p className="mt-1 text-[10px] text-amber-700 leading-tight">
-                      Base + negative variance carry
+                      Base + cumulative shortfall vs base
                     </p>
                   </td>
 
@@ -901,9 +914,6 @@ export default function WorkingHourCard({ header: initialHeader }) {
           </div>
         </>
       )}
-      
     </div>
-    
   );
-
 }
