@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useProductionAuth } from "../hooks/useProductionAuth";
-
+import MonthlyEfficiencyChart from "./MonthlyEfficiencyChart";
 // 🔹 Pretty number formatter
 function formatNumber(value, digits = 2) {
   const num = Number(value);
@@ -642,7 +642,8 @@ export default function WorkingHourCard({
           header first for this date.
         </div>
       )}
-
+{/* 🔹 NEW: Monthly efficiency chart for this ProductionAuth */}
+      <MonthlyEfficiencyChart allHourly={hourlyData} auth={ProductionAuth} />
       {/* Only show metrics + inputs when header exists */}
       {h && (
         <>
