@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useProductionAuth } from "../hooks/useProductionAuth";
-
+import MonthlyEfficiencyChart from "./MonthlyEfficiencyChart";
 // 🔹 Pretty number formatter
 function formatNumber(value, digits = 2) {
   const num = Number(value);
@@ -913,7 +913,7 @@ export default function WorkingHourCard({ header: initialHeader }) {
             )}
           </div>
         </>
-      )}
-    </div>
+      )}   
+    </div> 
   );
 }
