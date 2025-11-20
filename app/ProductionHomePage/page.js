@@ -56,6 +56,7 @@ export default async function ProductionHomePage() {
 
         <section className="grid gap-4 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1.2fr)]">
           <ProductionInputForm />
+          
           {/* 🔹 Pass hourlyData down, like you did for ProductionTvView */}
           <WorkingHourWrapper initialHeader={header} hourlyData={hourlyData} />
         </section>

@@ -32,7 +32,9 @@ function computeBaseTargetPerHour(header) {
   return targetFromCapacity || targetFromTodayTarget || 0;
 }
 
-// 🔸 GET /api/hourly-productions?headerId=...&productionUserId=...
+// 🔸 GET /api/hourly-productions?headerId=...&productionUserId=...&days=30
+//    If headerId is provided, fetch for that header
+//    If only productionUserId is provided, fetch for past N days (default 30)
 export async function GET(request) {
   try {
     await dbConnect();
@@ -40,25 +42,77 @@ export async function GET(request) {
     const { searchParams } = new URL(request.url);
     const headerId = searchParams.get("headerId");
     const productionUserId = searchParams.get("productionUserId");
+    const days = parseInt(searchParams.get("days") || "30", 10);
 
-    if (!headerId) {
+    // If headerId is provided, use the original logic
+    if (headerId) {
+      const query = { headerId };
+      if (productionUserId) {
+        query["productionUser.id"] = productionUserId;
+      }
+
+      const records = await HourlyProductionModel.find(query)
+        .sort({ hour: 1 })
+        .lean();
+
       return Response.json(
-        { success: false, message: "headerId query param is required" },
+        { success: true, data: records },
+        { status: 200 }
+      );
+    }
+
+    // If only productionUserId is provided, fetch for past N days
+    if (!productionUserId) {
+      return Response.json(
+        { success: false, message: "Either headerId or productionUserId is required" },
         { status: 400 }
       );
     }
 
-    const query = { headerId };
-    if (productionUserId) {
-      query["productionUser.id"] = productionUserId;
-    }
+    // Calculate date range
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+    startDate.setHours(0, 0, 0, 0);
+    endDate.setHours(23, 59, 59, 999);
 
-    const records = await HourlyProductionModel.find(query)
-      .sort({ hour: 1 })
+    // Fetch headers for the date range
+    const headers = await ProductionHeaderModel.find({
+      "productionUser.id": productionUserId,
+      productionDate: {
+        $gte: startDate.toISOString().slice(0, 10),
+        $lte: endDate.toISOString().slice(0, 10),
+      },
+    })
+      .select("_id productionDate")
       .lean();
 
+    const headerIds = headers.map((h) => h._id);
+    const headerMap = new Map(headers.map((h) => [String(h._id), h.productionDate]));
+
+    if (headerIds.length === 0) {
+      return Response.json(
+        { success: true, data: [] },
+        { status: 200 }
+      );
+    }
+
+    // Fetch hourly productions for these headers
+    const records = await HourlyProductionModel.find({
+      headerId: { $in: headerIds },
+      "productionUser.id": productionUserId,
+    })
+      .sort({ createdAt: 1 })
+      .lean();
+
+    // Add productionDate to each record
+    const recordsWithDate = records.map((rec) => ({
+      ...rec,
+      productionDate: headerMap.get(String(rec.headerId)) || null,
+    }));
+
     return Response.json(
-      { success: true, data: records },
+      { success: true, data: recordsWithDate },
       { status: 200 }
     );
   } catch (error) {
