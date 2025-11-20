@@ -25,6 +25,7 @@ function toNum(v, fallback = 0) {
   const n = Number(v);
   return Number.isFinite(n) ? n : fallback;
 }
+
 // 🔹 Color palette for bars
 const BAR_COLORS = [
   "#6366F1", // indigo
@@ -36,6 +37,7 @@ const BAR_COLORS = [
   "#EC4899", // pink
   "#22C55E", // green
 ];
+
 // 🔹 Match a record's productionUser with the logged-in ProductionAuth
 function sameProductionUser(recordUser, auth) {
   if (!recordUser || !auth) return false;
@@ -61,14 +63,32 @@ function sameProductionUser(recordUser, auth) {
   return idMatch || nameMatch;
 }
 
+// 🔹 Get a stable production date for the record
+function getProductionDateKey(rec) {
+  // Try all possible places where the production date might live
+  const srcDate =
+    rec.productionDate ||
+    rec.date ||
+    rec.headerProductionDate || // if you flatten header.productionDate in API
+    rec.header?.productionDate ||
+    rec.headerId?.productionDate ||
+    rec.createdAt ||
+    rec.updatedAt;
+
+  if (!srcDate) return null;
+
+  const d = new Date(srcDate);
+  if (Number.isNaN(d.getTime())) return null;
+
+  return d.toISOString().slice(0, 10); // YYYY-MM-DD
+}
+
 /* ------------------------------------------------------------------ */
 /* 🔹 MonthlyEfficiencyChart – last 30 days final AVG Eff % per day   */
+/*      For a single production user (all headers)                    */
 /* ------------------------------------------------------------------ */
 
 function MonthlyEfficiencyChart({ allHourly = [], auth }) {
-  // 🔹 For each date:
-  //   -> find last hourly record (max hour / latest updatedAt)
-  //   -> use rec.totalEfficiency from that record
   const chartData = useMemo(() => {
     if (!Array.isArray(allHourly) || !auth) return [];
 
@@ -86,21 +106,14 @@ function MonthlyEfficiencyChart({ allHourly = [], auth }) {
       // 1) Only this production user
       if (!sameProductionUser(rec.productionUser, auth)) continue;
 
-      // 2) Determine date key
-      const srcDate =
-        rec.productionDate ||
-        rec.date ||
-        rec.createdAt ||
-        rec.updatedAt;
-
-      if (!srcDate) continue;
-
-      const dayKey = new Date(srcDate).toISOString().slice(0, 10);
+      // 2) Determine production date key
+      const dayKey = getProductionDateKey(rec);
+      if (!dayKey) continue;
 
       // keep within last 30 days
       if (dayKey < startKey || dayKey > endKey) continue;
 
-      // 3) Take "AVG Eff %" from DB – you store it as totalEfficiency
+      // 3) Take "AVG Eff %" from DB – must match the table
       const eff = toNum(rec.totalEfficiency, NaN);
       if (!Number.isFinite(eff)) continue;
 
@@ -109,7 +122,9 @@ function MonthlyEfficiencyChart({ allHourly = [], auth }) {
 
       const existing = buckets.get(dayKey);
 
-      // If no record for this day yet, or this hour is later, or same hour but newer update, replace it
+      // ✅ We want the *last* hour's record for that date:
+      //   - higher hour wins
+      //   - if same hour, later updatedAt wins
       if (
         !existing ||
         hourNum > existing.hour ||
@@ -125,7 +140,7 @@ function MonthlyEfficiencyChart({ allHourly = [], auth }) {
       .map(([dayKey, { eff }]) => ({
         date: dayKey,
         label: dayKey.slice(5), // show "MM-DD"
-        avgEfficiency: eff, // 🔹 this is your final daily AVG Eff %
+        avgEfficiency: eff, // 🔹 final daily AVG Eff % (same as table last row)
       }));
 
     return rows;
@@ -153,7 +168,7 @@ function MonthlyEfficiencyChart({ allHourly = [], auth }) {
         </div>
       </div>
 
-            <div className="h-72 w-full">
+      <div className="h-72 w-full">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart
             data={chartData}
@@ -196,7 +211,6 @@ function MonthlyEfficiencyChart({ allHourly = [], auth }) {
           </BarChart>
         </ResponsiveContainer>
       </div>
-
     </div>
   );
 }
