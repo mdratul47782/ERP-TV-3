@@ -562,26 +562,19 @@ export default function WorkingHourCard({
         </div>
       </div>
 
-      {/* Messages */}
-      {/* {(headerLoading || error || message) && (
-        <div className="text-[11px] space-y-1">
-          {headerLoading && (
-            <div className="rounded border border-slate-200 bg-slate-50 px-2 py-1 text-slate-700">
-              Loading header for {selectedDate}...
-            </div>
-          )}
-          {error && (
-            <div className="mb-1 rounded border border-red-200 bg-red-50 px-2 py-1 text-red-700">
-              {error}
-            </div>
-          )}
-          {message && (
-            <div className="rounded border border-emerald-200 bg-emerald-50 px-2 py-1 text-emerald-700">
-              {message}
-            </div>
-          )}
-        </div>
-      )} */}
+      {/* Messages – simplified, no blinking */}
+{error && (
+  <div className="mb-1 rounded border border-red-200 bg-red-50 px-2 py-1 text-[11px] text-red-700">
+    {error}
+  </div>
+)}
+
+{message && (
+  <div className="mb-1 rounded border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] text-emerald-700">
+    {message}
+  </div>
+)}
+
 
       {/* If no header for this date */}
       {!h && !headerLoading && (
