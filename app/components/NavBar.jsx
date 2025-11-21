@@ -3,20 +3,19 @@
 import { useAuth } from "@/app/hooks/useAuth";
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useProductionAuth } from "../hooks/useProductionAuth";
 
 export default function NavBar() {
   const pathname = usePathname() || "/";
-  const { auth } = useAuth();
-  const { ProductionAuth } = useProductionAuth();
+  const router = useRouter();
 
-  // 🔹 Device hover detection (keeps your original behavior)
+  const { auth, setAuth } = useAuth();
+  const { ProductionAuth, setProductionAuth } = useProductionAuth();
+
   const [isHoverDevice, setIsHoverDevice] = useState(false);
   const [isVisible, setIsVisible] = useState(true);
-
-  // 🔹 Hamburger open/close
   const [isOpen, setIsOpen] = useState(false);
 
   useEffect(() => {
@@ -31,12 +30,10 @@ export default function NavBar() {
     return () => mq.removeEventListener("change", updateHover);
   }, []);
 
-  // 🔹 Close menu whenever route changes
   useEffect(() => {
     setIsOpen(false);
   }, [pathname]);
 
-  // 🔹 ESC to close
   useEffect(() => {
     const onKey = (e) => {
       if (e.key === "Escape") setIsOpen(false);
@@ -46,7 +43,6 @@ export default function NavBar() {
   }, []);
 
   const PATHS = {
-    // Quality pages
     home: "/",
     login: "/login",
     daily: auth?.id
@@ -54,12 +50,10 @@ export default function NavBar() {
       : "/login",
     hourlyDashboard: "/HourlyDashboard",
     summary: "/QualitySummary",
-    // Production pages
     productionHome: "/ProductionHomePage",
     productionLogin: "/ProductionLogin",
     productionRegister: "/ProductionRegister",
     productionHourlyView: "/ProductionHourlyView",
-    // You listed: /ProductionHourlyView (production Summary)
     productionSummary: "/ProductionHourlyView",
   };
 
@@ -68,14 +62,12 @@ export default function NavBar() {
     return pathname.toLowerCase().startsWith(href.toLowerCase());
   };
 
-  // 🔹 Small, fixed-height top bar (no size increase)
   const navTranslateClass = !isHoverDevice
     ? "translate-y-0"
     : isVisible
     ? "translate-y-0"
     : "-translate-y-full";
 
-  // 🔹 Icon button (hamburger)
   const IconButton = ({ open }) => (
     <span className="inline-block w-6 h-6 relative" aria-hidden="true">
       <span
@@ -96,7 +88,6 @@ export default function NavBar() {
     </span>
   );
 
-  // 🔹 Shared link styles
   const itemClass = (active) =>
     `w-full text-left px-3 py-2 rounded-md text-sm font-semibold transition
      focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400
@@ -112,11 +103,7 @@ export default function NavBar() {
   const chipClass =
     "rounded-md border border-black/10 bg-black/[0.03] px-2 py-1 text-xs text-slate-900 dark:border-white/10 dark:bg-white/5 dark:text-white";
 
-  // ✅ Determine who to show on the chip:
-  // 1) If a Production user is logged in, show Production_user_name
-  //    (supports both object and array shapes).
-  // 2) Else if Quality auth is logged in, show auth.user_name.
-  // 3) Else show "Guest".
+  // 🔹 Derive names + login states
   const prodUserObj = Array.isArray(ProductionAuth)
     ? ProductionAuth[0]
     : ProductionAuth;
@@ -124,8 +111,8 @@ export default function NavBar() {
   const qualityUserName = auth?.user_name;
   const displayName = prodUserName || qualityUserName || "Guest";
 
-  // 🔐 Quality login state only controls the Quality login/logout button
-  const isLoggedIn = auth !== null && auth !== undefined;
+  const isLoggedIn = !!auth;
+  const isProductionLoggedIn = !!prodUserObj;
 
   const authButtonClass = (active) =>
     `w-full text-left px-3 py-2 rounded-md text-sm font-semibold transition
@@ -140,7 +127,19 @@ export default function NavBar() {
          : "bg-indigo-600 text-white hover:bg-indigo-700"
      }`;
 
-  // Hover handlers only for hover devices (desktop)
+  const productionAuthButtonClass = (active) =>
+    `w-full text-left px-3 py-2 rounded-md text-sm font-semibold transition
+     focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400
+     ${
+       isProductionLoggedIn
+         ? active
+           ? "bg-red-700 text-white"
+           : "bg-red-600 text-white hover:bg-red-700"
+         : active
+         ? "bg-emerald-700 text-white"
+         : "bg-emerald-600 text-white hover:bg-emerald-700"
+     }`;
+
   const hoverHandlers = isHoverDevice
     ? {
         onMouseEnter: () => setIsVisible(true),
@@ -148,9 +147,32 @@ export default function NavBar() {
       }
     : {};
 
+  // 🔹 QUALITY logout
+  const handleQualityLogout = () => {
+    try {
+      setAuth?.(null);
+      // optional: localStorage.removeItem("qualityAuth");
+      setIsOpen(false);
+      router.push("/login");
+    } catch (error) {
+      console.error("Error during quality logout:", error);
+    }
+  };
+
+  // 🔹 PRODUCTION logout
+  const handleProductionLogout = () => {
+    try {
+      setProductionAuth?.(null);
+      // optional: localStorage.removeItem("productionAuth");
+      setIsOpen(false);
+      router.push(PATHS.productionLogin);
+    } catch (error) {
+      console.error("Error during production logout:", error);
+    }
+  };
+
   return (
     <>
-      {/* Thin hover strip to reveal nav on desktops */}
       {isHoverDevice && (
         <div
           className="fixed top-0 left-0 right-0 h-2 z-[40]"
@@ -158,7 +180,6 @@ export default function NavBar() {
         />
       )}
 
-      {/* 🔹 Top bar (fixed height) */}
       <nav
         role="navigation"
         aria-label="Primary"
@@ -174,7 +195,6 @@ export default function NavBar() {
       >
         <div className="mx-auto max-w-7xl px-3 md:px-4">
           <div className="flex min-h-14 items-center justify-between gap-3 py-1">
-            {/* Brand */}
             <Link
               href={PATHS.home}
               className="group flex items-center gap-2 rounded-md p-1.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
@@ -193,7 +213,6 @@ export default function NavBar() {
               </span>
             </Link>
 
-            {/* 🔹 Right side: user chip (compact) + hamburger */}
             <div className="flex items-center gap-2">
               <div className="hidden md:flex items-center gap-2">
                 <span className="material-symbols-outlined text-base text-slate-600 dark:text-gray-300">
@@ -219,7 +238,7 @@ export default function NavBar() {
         </div>
       </nav>
 
-      {/* 🔹 Overlay + Slide-down panel (does NOT change navbar height) */}
+      {/* Overlay + Panel */}
       <div
         className={`fixed inset-0 z-[60] transition ${
           isOpen ? "pointer-events-auto" : "pointer-events-none"
@@ -227,13 +246,12 @@ export default function NavBar() {
         aria-hidden={!isOpen}
         onClick={() => setIsOpen(false)}
       >
-        {/* Backdrop */}
         <div
           className={`absolute inset-0 bg-black/30 transition-opacity ${
             isOpen ? "opacity-100" : "opacity-0"
           }`}
         />
-        {/* Panel */}
+
         <div
           id="main-menu"
           role="menu"
@@ -259,7 +277,6 @@ export default function NavBar() {
               onClick={() => setIsOpen(false)}
               aria-label="Close menu"
             >
-              {/* X icon */}
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
                 <path
                   d="M6 6l12 12M18 6L6 18"
@@ -308,13 +325,23 @@ export default function NavBar() {
                   Quality Summary
                 </Link>
 
-                {/* Quality Login/Logout */}
-                <Link
-                  href={PATHS.login}
-                  className={authButtonClass(isActive(PATHS.login))}
-                >
-                  {isLoggedIn ? "Logout" : "Login"}
-                </Link>
+                {/* QUALITY Login / Logout */}
+                {isLoggedIn ? (
+                  <button
+                    type="button"
+                    onClick={handleQualityLogout}
+                    className={authButtonClass(isActive(PATHS.login))}
+                  >
+                    Logout
+                  </button>
+                ) : (
+                  <Link
+                    href={PATHS.login}
+                    className={authButtonClass(isActive(PATHS.login))}
+                  >
+                    Login
+                  </Link>
+                )}
               </div>
             </div>
 
@@ -328,24 +355,36 @@ export default function NavBar() {
                 >
                   Home
                 </Link>
-                {/* <Link
-                  href={PATHS.productionHourlyView}
-                  className={itemClass(isActive(PATHS.productionHourlyView))}
-                >
-                  Hourly View
-                </Link> */}
+
                 <Link
                   href={PATHS.productionSummary}
                   className={itemClass(isActive(PATHS.productionSummary))}
                 >
                   Summary
                 </Link>
-                <Link
-                  href={PATHS.productionLogin}
-                  className={itemClass(isActive(PATHS.productionLogin))}
-                >
-                  Login
-                </Link>
+
+                {/* PRODUCTION Login / Logout */}
+                {isProductionLoggedIn ? (
+                  <button
+                    type="button"
+                    onClick={handleProductionLogout}
+                    className={productionAuthButtonClass(
+                      isActive(PATHS.productionLogin)
+                    )}
+                  >
+                    Logout
+                  </button>
+                ) : (
+                  <Link
+                    href={PATHS.productionLogin}
+                    className={productionAuthButtonClass(
+                      isActive(PATHS.productionLogin)
+                    )}
+                  >
+                    Login
+                  </Link>
+                )}
+
                 <Link
                   href={PATHS.productionRegister}
                   className={itemClass(isActive(PATHS.productionRegister))}
