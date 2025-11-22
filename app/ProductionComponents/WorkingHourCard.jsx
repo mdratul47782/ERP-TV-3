@@ -1,9 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useProductionAuth } from "../hooks/useProductionAuth";
 import MonthlyEfficiencyChart from "./MonthlyEfficiencyChart";
-
 // 🔹 Pretty number formatter
 function formatNumber(value, digits = 2) {
   const num = Number(value);
@@ -34,19 +33,15 @@ export default function WorkingHourCard({
     }
     return new Date().toISOString().slice(0, 10);
   });
-
   // here is all hourly data
   useEffect(() => {
-    // eslint-disable-next-line no-console
     console.log("✅ WorkingHourCard: hourlyData (full)", hourlyData);
     try {
       if (Array.isArray(hourlyData) && hourlyData.length > 0) {
-        // eslint-disable-next-line no-console
         console.table(hourlyData);
       }
     } catch {}
   }, [hourlyData]);
-
   const [header, setHeader] = useState(initialHeaderNormalized);
   const h = header;
 
@@ -61,71 +56,6 @@ export default function WorkingHourCard({
   const [message, setMessage] = useState("");
   const [latestDynamicFromServer, setLatestDynamicFromServer] = useState(null);
   const [headerLoading, setHeaderLoading] = useState(false);
-
-  // 🔹 All historical hourly docs (for bar chart)
-  const [hourlyHistoryLive, setHourlyHistoryLive] = useState(() =>
-    Array.isArray(hourlyData) ? hourlyData : []
-  );
-
-  useEffect(() => {
-    if (Array.isArray(hourlyData)) {
-      setHourlyHistoryLive(hourlyData);
-    }
-  }, [hourlyData]);
-
-  // 🔹 Fetch last 30 days hourly history for this production user
-  const fetchHourlyHistory = useCallback(
-    async ({ cancelledRef } = {}) => {
-      if (!ProductionAuth?.id) return;
-
-      try {
-        const params = new URLSearchParams({
-          productionUserId: ProductionAuth.id,
-          days: "30",
-        });
-
-        const res = await fetch(
-          `/api/hourly-productions?${params.toString()}`,
-          { cache: "no-store" }
-        );
-        const json = await res.json();
-
-        if (cancelledRef?.current) return;
-
-        if (res.ok && json.success && Array.isArray(json.data)) {
-          setHourlyHistoryLive(json.data);
-        } else {
-          // eslint-disable-next-line no-console
-          console.warn(
-            "Hourly history refresh failed:",
-            json?.message || res.statusText
-          );
-        }
-      } catch (err) {
-        if (cancelledRef?.current) return;
-        // eslint-disable-next-line no-console
-        console.error("Failed to refresh hourly history:", err);
-      }
-    },
-    [ProductionAuth?.id]
-  );
-
-  useEffect(() => {
-    if (!ProductionAuth?.id) return;
-    const cancelledRef = { current: false };
-
-    const refresh = () => {
-      fetchHourlyHistory({ cancelledRef });
-    };
-
-    refresh();
-    const intervalId = setInterval(refresh, 5000);
-
-    return () => {
-      cancelledRef.current = true;
-      clearInterval(intervalId);
-    };
-  }, [ProductionAuth?.id, fetchHourlyHistory]);
 
   // ─────────────────────────────────────────────────────────────────────────────
   // 🔹 Auto-refresh header data for selected date every 3s (per production user)
@@ -161,7 +91,6 @@ export default function WorkingHourCard({
         }
       } catch (err) {
         if (cancelled) return;
-        // eslint-disable-next-line no-console
         console.error("Failed to refresh header data:", err);
         setHeader(null);
       } finally {
@@ -217,7 +146,6 @@ export default function WorkingHourCard({
           setLatestDynamicFromServer(null);
         }
       } catch (err) {
-        // eslint-disable-next-line no-console
         console.error(err);
         setError(err.message || "Failed to load hourly records");
       } finally {
@@ -487,12 +415,9 @@ export default function WorkingHourCard({
         }
       }
 
-      // 🔹 Also refresh history for chart
-      fetchHourlyHistory();
       setAchievedInput("");
       setMessage("Hourly record saved successfully.");
     } catch (err) {
-      // eslint-disable-next-line no-console
       console.error(err);
       setError(err.message || "Failed to save hourly record");
     } finally {
@@ -501,16 +426,12 @@ export default function WorkingHourCard({
   };
 
   const handleEdit = () => {
-    // TODO: wire this to PATCH /api/hourly-productions/:id
-    // eslint-disable-next-line no-console
     console.log(
       "Edit clicked – wire this to PATCH /api/hourly-productions/:id"
     );
   };
 
   const handleDelete = () => {
-    // TODO: wire this to DELETE /api/hourly-productions/:id
-    // eslint-disable-next-line no-console
     console.log(
       "Delete clicked – you can call DELETE /api/hourly-productions/:id"
     );
@@ -562,19 +483,26 @@ export default function WorkingHourCard({
         </div>
       </div>
 
-      {/* Messages – simplified, no blinking */}
-{error && (
-  <div className="mb-1 rounded border border-red-200 bg-red-50 px-2 py-1 text-[11px] text-red-700">
-    {error}
-  </div>
-)}
-
-{message && (
-  <div className="mb-1 rounded border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] text-emerald-700">
-    {message}
-  </div>
-)}
-
+      {/* Messages */}
+      {(headerLoading || error || message) && (
+        <div className="text-[11px] space-y-1">
+          {headerLoading && (
+            <div className="rounded border border-slate-200 bg-slate-50 px-2 py-1 text-slate-700">
+              Loading header for {selectedDate}...
+            </div>
+          )}
+          {error && (
+            <div className="mb-1 rounded border border-red-200 bg-red-50 px-2 py-1 text-red-700">
+              {error}
+            </div>
+          )}
+          {message && (
+            <div className="rounded border border-emerald-200 bg-emerald-50 px-2 py-1 text-emerald-700">
+              {message}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* If no header for this date */}
       {!h && !headerLoading && (
@@ -634,10 +562,7 @@ export default function WorkingHourCard({
                   Carry (shortfall vs base up to previous hour):
                 </span>{" "}
                 <span className="font-semibold text-amber-700">
-                  {formatNumber(
-                    cumulativeShortfallVsBasePrevForSelected,
-                    0
-                  )}
+                  {formatNumber(cumulativeShortfallVsBasePrevForSelected, 0)}
                 </span>
               </div>
 
@@ -895,14 +820,13 @@ export default function WorkingHourCard({
                 </table>
               </div>
             )}
-
             {/* 🔹 Monthly bar chart – same AVG Eff % as table, for past days */}
-            {ProductionAuth && (
+            {ProductionAuth && h?._id && (
               <div className="mt-4">
                 <MonthlyEfficiencyChart
-                  allHourly={hourlyHistoryLive} // 🔹 all historical hourly docs
+                  allHourly={hourlyData} // 🔹 all historical hourly docs
                   auth={ProductionAuth} // 🔹 logged-in production user
-                  // 🔹 headerId intentionally NOT passed: show all days for the user
+                  headerId={h._id} // 🔹 current header (line/style)
                 />
               </div>
             )}

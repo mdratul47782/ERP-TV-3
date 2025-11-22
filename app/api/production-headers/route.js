@@ -1,6 +1,6 @@
 // app/api/production-headers/route.js
 import { dbConnect } from "@/services/mongo";
-import { ProductionHeaderModel } from "@/models/ProductionHeader-model";
+import { ProductionHeaderModel, fixProductionHeaderIndexes } from "@/models/ProductionHeader-model";
 
 // 🔹 Today as "YYYY-MM-DD"
 function getTodayDateString() {
@@ -142,7 +142,28 @@ export async function POST(request) {
       Object.assign(existing, doc);
       saved = await existing.save();
     } else {
-      saved = await ProductionHeaderModel.create(doc);
+      try {
+        saved = await ProductionHeaderModel.create(doc);
+      } catch (createError) {
+        // 🔹 Handle duplicate key error on old headerDate index
+        if (createError.code === 11000 && createError.message?.includes("headerDate")) {
+          console.log("⚠️ Detected old headerDate index conflict. Attempting to fix...");
+          
+          // Try to fix the index issue
+          const fixResult = await fixProductionHeaderIndexes();
+          
+          if (fixResult.success) {
+            // Retry creating the document after fixing index
+            saved = await ProductionHeaderModel.create(doc);
+          } else {
+            throw new Error(
+              `Index conflict detected. Please contact administrator to fix database indexes. Original error: ${createError.message}`
+            );
+          }
+        } else {
+          throw createError;
+        }
+      }
     }
 
     return Response.json(
