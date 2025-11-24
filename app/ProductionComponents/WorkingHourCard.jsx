@@ -26,13 +26,10 @@ export default function WorkingHourCard({
     : initialHeader || null;
 
   // 🔹 Selected date: prefer header.productionDate, else today
-  const [selectedDate, setSelectedDate] = useState(() => {
-    if (initialHeaderNormalized?.productionDate) {
-      // e.g. "2025-11-18" or full ISO string
-      return initialHeaderNormalized.productionDate.slice(0, 10);
-    }
-    return new Date().toISOString().slice(0, 10);
-  });
+  const [selectedDate, setSelectedDate] = useState(() =>
+    new Date().toISOString().slice(0, 10)
+  );
+
   // here is all hourly data
   useEffect(() => {
     console.log("✅ WorkingHourCard: hourlyData (full)", hourlyData);
@@ -54,7 +51,8 @@ export default function WorkingHourCard({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
-  const [latestDynamicFromServer, setLatestDynamicFromServer] = useState(null);
+  const [latestDynamicFromServer, setLatestDynamicFromServer] =
+    useState(null);
   const [headerLoading, setHeaderLoading] = useState(false);
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -542,7 +540,9 @@ export default function WorkingHourCard({
                 </span>
               </div>
               <div>
-                <span className="font-medium text-slate-600">Day Target:</span>{" "}
+                <span className="font-medium text-slate-600">
+                  Day Target:
+                </span>{" "}
                 <span className="font-semibold text-slate-900">
                   {todayTarget}
                 </span>
